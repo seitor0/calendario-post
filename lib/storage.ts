@@ -7,6 +7,7 @@ import {
   getDoc,
   getDocs,
   query,
+  limit,
   serverTimestamp,
   setDoc,
   Timestamp,
@@ -140,15 +141,17 @@ export async function ensureUserProfile(user: User): Promise<UserProfile> {
   const ref = doc(db, "users", user.uid);
   const snap = await getDoc(ref);
   if (!snap.exists()) {
+    const existingUsers = await getDocs(query(collection(db, "users"), limit(1)));
+    const role: UserRole = existingUsers.empty ? "admin" : "member";
     const profile: UserProfile = {
       id: user.uid,
-      role: "member",
+      role,
       allowedClients: [],
       displayName: user.displayName ?? undefined,
       email: user.email ?? undefined
     };
     await setDoc(ref, {
-      role: profile.role,
+      role,
       allowedClients: profile.allowedClients,
       displayName: profile.displayName ?? null,
       email: profile.email ?? null
