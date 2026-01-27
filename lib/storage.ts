@@ -110,10 +110,14 @@ function asIso(value?: Timestamp | string | null) {
   return value.toDate().toISOString();
 }
 
-function stripUndefined<T extends Record<string, unknown>>(value: T) {
-  return Object.fromEntries(
-    Object.entries(value).filter(([, item]) => item !== undefined)
-  ) as Record<string, unknown>;
+function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
+  const next: Partial<T> = {};
+  Object.entries(obj).forEach(([key, value]) => {
+    if (value !== undefined) {
+      (next as T)[key] = value;
+    }
+  });
+  return next;
 }
 
 function normalizeClient(client: Client): Client {
