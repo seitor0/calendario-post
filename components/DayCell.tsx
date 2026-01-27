@@ -59,7 +59,7 @@ export default function DayCell({
             key={item.id}
             title={`${"paidChannels" in item ? "Pauta" : "Publicacion"}: ${
               item.title || "Sin titulo"
-            } | Estado: ${item.status.replaceAll("_", " ")} | Eje: ${
+            } | Estado: ${String(item.status).replace(/_/g, " ")} | Eje: ${
               axes.find((axis) => axis.id === item.axis)?.name || "Sin eje"
             }`}
             className="flex items-center gap-1"
