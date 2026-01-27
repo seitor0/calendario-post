@@ -111,13 +111,12 @@ function asIso(value?: Timestamp | string | null) {
 }
 
 function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
-  const next: Partial<T> = {};
-  Object.entries(obj).forEach(([key, value]) => {
-    if (value !== undefined) {
-      (next as T)[key] = value;
-    }
+  const out: Partial<T> = {};
+  (Object.keys(obj) as (keyof T)[]).forEach((k) => {
+    const v = obj[k];
+    if (v !== undefined) out[k] = v;
   });
-  return next;
+  return out;
 }
 
 function normalizeClient(client: Client): Client {
@@ -531,8 +530,8 @@ export async function updateItemDoc(
   itemId: string,
   patch: Partial<Post> | Partial<EventItem> | Partial<PaidItem>
 ) {
-  const updateData: Record<string, unknown> = {
-    ...stripUndefined(patch as Record<string, unknown>),
+  const updateData: Record<string, any> = {
+    ...stripUndefined(patch),
     updatedAt: serverTimestamp()
   };
   if ("date" in patch && patch.date) {
