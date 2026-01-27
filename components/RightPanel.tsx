@@ -43,6 +43,7 @@ type RightPanelProps = {
   paidChannels: string[];
   axes: Axis[];
   enablePaid: boolean;
+  unreadById: Record<string, boolean>;
 };
 
 export default function RightPanel({
@@ -74,7 +75,8 @@ export default function RightPanel({
   channels,
   paidChannels,
   axes,
-  enablePaid
+  enablePaid,
+  unreadById
 }: RightPanelProps) {
   const selectedPost =
     selectedItem?.type === "post"
@@ -117,7 +119,12 @@ export default function RightPanel({
                             : "bg-slate-200 text-ink/70"
                         }`}
                       >
-                        {post.title || "Publicacion"}
+                        <span className="flex items-center gap-1">
+                          {post.title || "Publicacion"}
+                          {unreadById[post.id] ? (
+                            <span className="h-2 w-2 rounded-full bg-red-500" />
+                          ) : null}
+                        </span>
                       </button>
                     ))
                   )}
@@ -137,17 +144,22 @@ export default function RightPanel({
                           key={item.id}
                           type="button"
                           onClick={() => onSelectPaid(item.id)}
-                          className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition ${
-                            selectedItem?.type === "paid" && selectedItem.id === item.id
-                              ? "bg-ink text-white"
-                              : "bg-slate-200 text-ink/70"
-                          }`}
-                        >
+                        className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition ${
+                          selectedItem?.type === "paid" && selectedItem.id === item.id
+                            ? "bg-ink text-white"
+                            : "bg-slate-200 text-ink/70"
+                        }`}
+                      >
+                        <span className="flex items-center gap-1">
                           $ {item.title || "Sin titulo"}
-                        </button>
-                      ))
-                    )}
-                  </div>
+                          {unreadById[item.id] ? (
+                            <span className="h-2 w-2 rounded-full bg-red-500" />
+                          ) : null}
+                        </span>
+                      </button>
+                    ))
+                  )}
+                </div>
                 </div>
               ) : null}
               <div>
@@ -169,7 +181,12 @@ export default function RightPanel({
                             : "bg-slate-200 text-ink/70"
                         }`}
                       >
-                        {event.title || "Evento"}
+                        <span className="flex items-center gap-1">
+                          {event.title || "Evento"}
+                          {unreadById[event.id] ? (
+                            <span className="h-2 w-2 rounded-full bg-red-500" />
+                          ) : null}
+                        </span>
                       </button>
                     ))
                   )}

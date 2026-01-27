@@ -8,10 +8,21 @@ type SettingsModalProps = {
   isOpen: boolean;
   data: AppData | null;
   onClose: () => void;
-  onUpdate: (next: AppData) => void;
+  onSelectClient: (clientId: string) => void;
+  onUpdateClient: (clientId: string, patch: Partial<Client>) => void;
+  onCreateClient: (name: string, enablePaid: boolean) => void;
+  isAdmin: boolean;
 };
 
-export default function SettingsModal({ isOpen, data, onClose, onUpdate }: SettingsModalProps) {
+export default function SettingsModal({
+  isOpen,
+  data,
+  onClose,
+  onSelectClient,
+  onUpdateClient,
+  onCreateClient,
+  isAdmin
+}: SettingsModalProps) {
   const [newClientName, setNewClientName] = useState("");
   const [newChannel, setNewChannel] = useState("");
   const [newPaidChannel, setNewPaidChannel] = useState("");
@@ -26,67 +37,23 @@ export default function SettingsModal({ isOpen, data, onClose, onUpdate }: Setti
 
   const activeClient = data.clients.find((client) => client.id === data.activeClientId);
 
-  const updateClientList = (nextClients: Client[]) => {
-    const next = { ...data, clients: nextClients };
-    onUpdate(next);
-  };
-
   const handleAddClient = () => {
     if (!newClientName.trim()) {
       return;
     }
-    const id = makeId();
-    const newClient: Client = {
-      id,
-      name: newClientName.trim(),
-      channels: ["Instagram"],
-      paidChannels: newClientEnablePaid
-        ? [
-            "Google search / Meta Ads",
-            "Google Ads",
-            "LinkedIn Ads",
-            "TikTok Ads",
-            "Programmatic"
-          ]
-        : [],
-      enablePaid: newClientEnablePaid,
-      axes: [{ id: makeId(), name: "Eje A", color: "#6366F1" }]
-    };
-    const next = {
-      ...data,
-      clients: [...data.clients, newClient],
-      postsByClient: { ...data.postsByClient, [id]: [] },
-      eventsByClient: { ...data.eventsByClient, [id]: [] }
-    };
-    onUpdate(next);
+    if (!isAdmin) {
+      return;
+    }
+    onCreateClient(newClientName.trim(), newClientEnablePaid);
     setNewClientName("");
     setNewClientEnablePaid(false);
   };
 
-  const handleDeleteClient = (clientId: string) => {
-    const nextClients = data.clients.filter((client) => client.id !== clientId);
-    const nextPosts = { ...data.postsByClient };
-    const nextEvents = { ...data.eventsByClient };
-    delete nextPosts[clientId];
-    delete nextEvents[clientId];
-    const nextActive =
-      data.activeClientId === clientId && nextClients.length > 0
-        ? nextClients[0].id
-        : data.activeClientId;
-    onUpdate({
-      ...data,
-      activeClientId: nextActive,
-      clients: nextClients,
-      postsByClient: nextPosts,
-      eventsByClient: nextEvents
-    });
-  };
-
   const handleUpdateClient = (clientId: string, patch: Partial<Client>) => {
-    const nextClients = data.clients.map((client) =>
-      client.id === clientId ? { ...client, ...patch } : client
-    );
-    updateClientList(nextClients);
+    if (!isAdmin) {
+      return;
+    }
+    onUpdateClient(clientId, patch);
   };
 
   const triggerLogoUpload = () => {
@@ -108,7 +75,7 @@ export default function SettingsModal({ isOpen, data, onClose, onUpdate }: Setti
   };
 
   const addChannel = () => {
-    if (!activeClient || !newChannel.trim()) {
+    if (!isAdmin || !activeClient || !newChannel.trim()) {
       return;
     }
     const nextChannels = [...activeClient.channels, newChannel.trim()];
@@ -117,7 +84,7 @@ export default function SettingsModal({ isOpen, data, onClose, onUpdate }: Setti
   };
 
   const removeChannel = (channel: string) => {
-    if (!activeClient) {
+    if (!isAdmin || !activeClient) {
       return;
     }
     handleUpdateClient(activeClient.id, {
@@ -126,7 +93,7 @@ export default function SettingsModal({ isOpen, data, onClose, onUpdate }: Setti
   };
 
   const addPaidChannel = () => {
-    if (!activeClient || !newPaidChannel.trim()) {
+    if (!isAdmin || !activeClient || !newPaidChannel.trim()) {
       return;
     }
     const nextChannels = [...activeClient.paidChannels, newPaidChannel.trim()];
@@ -135,7 +102,7 @@ export default function SettingsModal({ isOpen, data, onClose, onUpdate }: Setti
   };
 
   const removePaidChannel = (channel: string) => {
-    if (!activeClient) {
+    if (!isAdmin || !activeClient) {
       return;
     }
     handleUpdateClient(activeClient.id, {
@@ -144,7 +111,7 @@ export default function SettingsModal({ isOpen, data, onClose, onUpdate }: Setti
   };
 
   const addAxis = () => {
-    if (!activeClient || !newAxisName.trim()) {
+    if (!isAdmin || !activeClient || !newAxisName.trim()) {
       return;
     }
     const newAxis: Axis = {
@@ -158,7 +125,7 @@ export default function SettingsModal({ isOpen, data, onClose, onUpdate }: Setti
   };
 
   const removeAxis = (axisId: string) => {
-    if (!activeClient) {
+    if (!isAdmin || !activeClient) {
       return;
     }
     handleUpdateClient(activeClient.id, {
@@ -179,6 +146,11 @@ export default function SettingsModal({ isOpen, data, onClose, onUpdate }: Setti
             Cerrar
           </button>
         </div>
+        {!isAdmin ? (
+          <p className="mt-2 text-xs text-ink/50">
+            Solo administradores pueden editar configuraciones de clientes.
+          </p>
+        ) : null}
 
         <div className="mt-6 grid gap-6 md:grid-cols-2">
           <div className="space-y-4">
@@ -186,7 +158,7 @@ export default function SettingsModal({ isOpen, data, onClose, onUpdate }: Setti
               <p className="text-xs font-semibold text-ink/60">Cliente activo</p>
               <select
                 value={data.activeClientId}
-                onChange={(event) => onUpdate({ ...data, activeClientId: event.target.value })}
+                onChange={(event) => onSelectClient(event.target.value)}
                 className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-xs"
               >
                 {data.clients.map((client) => (
@@ -248,7 +220,7 @@ export default function SettingsModal({ isOpen, data, onClose, onUpdate }: Setti
                     />
                     <button
                       type="button"
-                      onClick={() => onUpdate({ ...data, activeClientId: client.id })}
+                      onClick={() => onSelectClient(client.id)}
                       className={`rounded-full px-3 py-1 text-xs font-semibold ${
                         data.activeClientId === client.id
                           ? "bg-skydeep text-white"
@@ -257,45 +229,40 @@ export default function SettingsModal({ isOpen, data, onClose, onUpdate }: Setti
                     >
                       Activo
                     </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteClient(client.id)}
-                      className="text-xs font-semibold text-danger"
-                    >
-                      Eliminar
-                    </button>
                   </div>
                 ))}
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-200 p-3">
-              <p className="text-xs font-semibold text-ink/60">Agregar cliente</p>
-              <div className="mt-2 flex gap-2">
-                <input
-                  value={newClientName}
-                  onChange={(event) => setNewClientName(event.target.value)}
-                  placeholder="Nombre del cliente"
-                  className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs"
-                />
-                <button
-                  type="button"
-                  onClick={handleAddClient}
-                  className="rounded-full bg-skydeep px-3 py-2 text-xs font-semibold text-white"
-                >
-                  Agregar
-                </button>
+            {isAdmin ? (
+              <div className="rounded-xl border border-slate-200 p-3">
+                <p className="text-xs font-semibold text-ink/60">Agregar cliente</p>
+                <div className="mt-2 flex gap-2">
+                  <input
+                    value={newClientName}
+                    onChange={(event) => setNewClientName(event.target.value)}
+                    placeholder="Nombre del cliente"
+                    className="flex-1 rounded-xl border border-slate-200 px-3 py-2 text-xs"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleAddClient}
+                    className="rounded-full bg-skydeep px-3 py-2 text-xs font-semibold text-white"
+                  >
+                    Agregar
+                  </button>
+                </div>
+                <label className="mt-3 flex items-center gap-2 text-xs text-ink/60">
+                  <input
+                    type="checkbox"
+                    checked={newClientEnablePaid}
+                    onChange={(event) => setNewClientEnablePaid(event.target.checked)}
+                    className="accent-skydeep"
+                  />
+                  Activar pauta para este cliente
+                </label>
               </div>
-              <label className="mt-3 flex items-center gap-2 text-xs text-ink/60">
-                <input
-                  type="checkbox"
-                  checked={newClientEnablePaid}
-                  onChange={(event) => setNewClientEnablePaid(event.target.checked)}
-                  className="accent-skydeep"
-                />
-                Activar pauta para este cliente
-              </label>
-            </div>
+            ) : null}
           </div>
 
           <div className="space-y-5">

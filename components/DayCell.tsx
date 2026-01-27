@@ -17,6 +17,7 @@ type DayCellProps = {
   events: EventItem[];
   paid: PaidItem[];
   axes: Axis[];
+  hasUpdates?: boolean;
   onSelect: (date: string) => void;
   onDoubleClick: (date: string) => void;
 };
@@ -34,6 +35,7 @@ export default function DayCell({
   events,
   paid,
   axes,
+  hasUpdates = false,
   onSelect,
   onDoubleClick
 }: DayCellProps) {
@@ -50,6 +52,9 @@ export default function DayCell({
         isCurrentMonth ? "bg-sky" : "bg-skysoft/70 text-ink/40"
       } ${isSelected ? "ring-2 ring-skydeep shadow-soft" : ""}`}
     >
+      {hasUpdates ? (
+        <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-red-500" />
+      ) : null}
       <span className="ml-auto text-xs font-semibold text-ink/50 group-hover:text-ink">
         {date.getDate()}
       </span>

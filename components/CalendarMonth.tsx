@@ -12,6 +12,7 @@ type CalendarMonthProps = {
   events: EventItem[];
   paid: PaidItem[];
   axes: Axis[];
+  dayUpdates?: Record<string, boolean>;
   onSelectDate: (date: string) => void;
   onQuickAdd: (date: string) => void;
 };
@@ -60,6 +61,7 @@ export default function CalendarMonth({
   events,
   paid,
   axes,
+  dayUpdates = {},
   onSelectDate,
   onQuickAdd
 }: CalendarMonthProps) {
@@ -96,6 +98,7 @@ export default function CalendarMonth({
                   events={eventsByDate[dateKey] ?? []}
                   paid={paidByDate[dateKey] ?? []}
                   axes={axes}
+                  hasUpdates={dayUpdates[dateKey] ?? false}
                   onSelect={onSelectDate}
                   onDoubleClick={onQuickAdd}
                 />

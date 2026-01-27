@@ -1,0 +1,50 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function userDoc() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid));
+    }
+
+    function isAdmin() {
+      return isSignedIn() && userDoc().data.role == "admin";
+    }
+
+    function canAccessClient(clientId) {
+      return isAdmin()
+        || (
+          isSignedIn()
+          && userDoc().data.allowedClients != null
+          && userDoc().data.allowedClients.hasAny([clientId])
+        );
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && request.auth.uid == userId;
+      allow create: if isSignedIn() && request.auth.uid == userId;
+      allow update: if isAdmin() || request.auth.uid == userId;
+      allow delete: if isAdmin();
+
+      match /reads/{threadId} {
+        allow read, write: if isSignedIn() && request.auth.uid == userId;
+      }
+
+      match /daySeen/{dayId} {
+        allow read, write: if isSignedIn() && request.auth.uid == userId;
+      }
+    }
+
+    match /clients/{clientId} {
+      allow read: if canAccessClient(clientId);
+      allow create: if isAdmin();
+      allow update, delete: if isAdmin();
+
+      match /{subcollection}/{docId} {
+        allow read, write: if canAccessClient(clientId);
+      }
+    }
+  }
+}

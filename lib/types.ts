@@ -5,6 +5,16 @@ export type PostStatus =
   | "aprobado"
   | "publicada";
 
+export type UserRole = "admin" | "member";
+
+export type UserProfile = {
+  id: string;
+  role: UserRole;
+  allowedClients: string[];
+  displayName?: string;
+  email?: string;
+};
+
 export type ChatAuthor = "Cliente" | "Agencia";
 
 export type ChatMessage = {
@@ -30,6 +40,7 @@ export type Post = {
   chat: ChatMessage[];
   createdAt: string;
   updatedAt: string;
+  lastMessageAt?: string | null;
   // Etapa 2 (usuarios): userMeta: Record<userId, { lastSeenAt: string; unreadCount: number }>
 };
 
@@ -44,6 +55,7 @@ export type EventItem = {
   chat: ChatMessage[];
   createdAt: string;
   updatedAt: string;
+  lastMessageAt?: string | null;
   // Etapa 2 (usuarios): userMeta: Record<userId, { lastSeenAt: string; unreadCount: number }>
 };
 
@@ -57,6 +69,7 @@ export type PaidItem = {
   chat: ChatMessage[];
   createdAt: string;
   updatedAt: string;
+  lastMessageAt?: string | null;
   paidChannels: string[];
   paidContent: string;
   investmentAmount: number;
