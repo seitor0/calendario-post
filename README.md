@@ -14,4 +14,4 @@ pnpm install
 pnpm dev
 ```
 
-La app guarda datos localmente en `localStorage` bajo la clave `calpost:v1`.
+La app solo guarda preferencias de UI (cliente activo) en `localStorage`.
