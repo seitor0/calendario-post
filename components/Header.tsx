@@ -28,14 +28,15 @@ export default function Header({
   const [newClientName, setNewClientName] = useState("");
   const activeClient = clients.find((client) => client.id === activeClientId) ?? null;
   const displayName = user.displayName || user.email || "";
-  const avatarLabel = activeClient?.name || displayName || "Usuario";
-  const initials = avatarLabel
+  const initials = displayName
     .split(" ")
     .filter(Boolean)
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join("");
-  const avatarSrc = activeClient?.logoDataUrl || user.photoURL || "";
+  const avatarSrc = user.photoURL || "";
+  const clientLogoSrc = activeClient?.logoDataUrl || "/logo_borrador.png";
+  const clientLogoAlt = activeClient?.name || "Calendario Post";
 
   const handleCreateClient = (event: FormEvent) => {
     event.preventDefault();
@@ -53,8 +54,8 @@ export default function Header({
           <div className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-xl bg-skysoft">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/logo_borrador.png"
-              alt="Calendario Post"
+              src={clientLogoSrc}
+              alt={clientLogoAlt}
               className="h-full w-full object-contain p-1"
             />
           </div>
@@ -72,7 +73,7 @@ export default function Header({
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={avatarSrc}
-                alt={avatarLabel}
+                alt={displayName || "Usuario"}
                 className="h-full w-full object-cover"
               />
             ) : (
