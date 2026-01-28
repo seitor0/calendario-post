@@ -96,14 +96,22 @@ export async function safeSetDoc<T = DocumentData>(
   label = ref.path
 ) {
   if (!isDebugEnabled()) {
-    await setDoc(ref, data, options);
+    if (options) {
+      await setDoc(ref, data as any, options);
+    } else {
+      await setDoc(ref, data as any);
+    }
     return;
   }
   const start = nowMs();
   console.groupCollapsed(`[Firestore] setDoc ${label}`);
   console.log("path", ref.path);
   try {
-    await setDoc(ref, data, options);
+    if (options) {
+      await setDoc(ref, data as any, options);
+    } else {
+      await setDoc(ref, data as any);
+    }
     console.log("ok");
   } catch (error) {
     logError(error);
@@ -120,14 +128,14 @@ export async function safeUpdateDoc<T extends DocumentData>(
   label = ref.path
 ) {
   if (!isDebugEnabled()) {
-    await updateDoc(ref, data as Record<string, unknown>);
+    await updateDoc(ref, data as any);
     return;
   }
   const start = nowMs();
   console.groupCollapsed(`[Firestore] updateDoc ${label}`);
   console.log("path", ref.path);
   try {
-    await updateDoc(ref, data as Record<string, unknown>);
+    await updateDoc(ref, data as any);
     console.log("ok");
   } catch (error) {
     logError(error);
