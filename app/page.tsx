@@ -1,8 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { User } from "firebase/auth";
-import { collection, doc, limit, query } from "firebase/firestore";
+import { useEffect, useMemo, useState } from "react";
 import CalendarMonth from "@/components/CalendarMonth";
 import AddItemModal, {
   AddEventPayload,
@@ -13,38 +11,22 @@ import FooterSummary from "@/components/FooterSummary";
 import Header from "@/components/Header";
 import RightPanel from "@/components/RightPanel";
 import SettingsModal from "@/components/SettingsModal";
-import {
-  addChatMessage,
-  addEvent,
-  addPaid,
-  addPost,
-  clearLegacyLocalData,
-  createClient,
-  createEventDoc,
-  createPaidDoc,
-  createPostDoc,
-  deleteItemDoc,
-  ensureClientRecord,
-  getMonthKey,
-  getPreferredClientId,
-  loadClientMonthData,
-  loadDaySeen,
-  loadThreadReads,
-  markDaySeen,
-  markThreadRead,
-  setPreferredClientId,
-  updateClient,
-  updateItemDoc,
-  appendItemMessage,
-  DATA_VERSION,
-  fetchClientsForProfile
-} from "@/lib/storage";
-import { isDateInRange, toISODate } from "@/lib/date";
-import type { AppData, ApprovalUser, Client, EventItem, PaidItem, Post, UserProfile } from "@/lib/types";
+import { isDateInRange, getMonthKey, toISODate } from "@/lib/date";
+import type { ApprovalUser, Client, EventItem, PaidItem, Post, AppData, SyncStatus } from "@/lib/types";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { loginWithGoogle, logout } from "@/lib/auth";
-import { db } from "@/lib/firebase";
-import { logAuthState, safeGetDoc, safeGetDocs } from "@/lib/debugFirestore";
+import {
+  combineSyncStatus,
+  createClient,
+  getPreferredClientId,
+  setPreferredClientId,
+  updateClient,
+  useClients,
+  useEvents,
+  usePaid,
+  usePosts
+} from "@/lib/data";
+import { markDaySeen, markThreadRead, useDaySeen, useThreadReads } from "@/lib/data/useReads";
 
 const EMPTY_MAP: Record<string, boolean> = {};
 
@@ -53,185 +35,89 @@ type SelectedItem = {
   id: string;
 } | null;
 
-type DebugResult = { ok: boolean; message: string };
-
-type DebugPanelProps = {
-  enabled: boolean;
-  authUser: User | null;
-  profile: UserProfile | null;
-  activeClientId: string;
-  monthKey: string;
-  selectedDate: string;
-};
-
-const formatDebugError = (error: unknown) => {
-  if (error && typeof error === "object") {
-    const err = error as { code?: string; message?: string };
-    const code = err.code ? String(err.code) : "unknown";
-    const message = err.message ? String(err.message) : "Unknown error";
-    return `${code}: ${message}`;
-  }
-  return String(error);
-};
-
-function DebugPanel({
-  enabled,
-  authUser,
-  profile,
-  activeClientId,
-  monthKey,
-  selectedDate
-}: DebugPanelProps) {
-  const [profileStatus, setProfileStatus] = useState<"idle" | "loading" | "ok" | "missing" | "error">("idle");
-  const [profileData, setProfileData] = useState<Record<string, unknown> | null>(null);
-  const [testResults, setTestResults] = useState<Record<string, DebugResult>>({});
-  const [testing, setTesting] = useState(false);
-
-  useEffect(() => {
-    if (!enabled || !authUser) {
-      setProfileStatus("idle");
-      setProfileData(null);
-      return;
-    }
-    let active = true;
-    setProfileStatus("loading");
-    void safeGetDoc(doc(db, "users", authUser.uid), `users/${authUser.uid}`)
-      .then((snap) => {
-        if (!active) {
-          return;
-        }
-        if (!snap.exists()) {
-          setProfileStatus("missing");
-          setProfileData(null);
-          return;
-        }
-        setProfileStatus("ok");
-        setProfileData(snap.data() as Record<string, unknown>);
-      })
-      .catch((error) => {
-        if (!active) {
-          return;
-        }
-        setProfileStatus("error");
-        setProfileData({ error: formatDebugError(error) });
-      });
-    return () => {
-      active = false;
-    };
-  }, [enabled, authUser?.uid]);
-
-  if (!enabled) {
-    return null;
-  }
-
-  const runPermissionTests = async () => {
-    if (!authUser || !activeClientId) {
-      setTestResults({
-        guard: {
-          ok: false,
-          message: "Missing authUser or activeClientId"
-        }
-      });
-      return;
-    }
-
-    setTesting(true);
-    const results: Record<string, DebugResult> = {};
-
-    try {
-      await safeGetDoc(doc(db, "clients", activeClientId), `clients/${activeClientId}`);
-      results.clientDoc = { ok: true, message: "OK" };
-    } catch (error) {
-      results.clientDoc = { ok: false, message: formatDebugError(error) };
-    }
-
-    try {
-      await safeGetDocs(
-        query(collection(db, "clients", activeClientId, "posts"), limit(1)),
-        `clients/${activeClientId}/posts?limit=1`
-      );
-      results.posts = { ok: true, message: "OK" };
-    } catch (error) {
-      results.posts = { ok: false, message: formatDebugError(error) };
-    }
-
-    try {
-      await safeGetDocs(
-        query(collection(db, "clients", activeClientId, "events"), limit(1)),
-        `clients/${activeClientId}/events?limit=1`
-      );
-      results.events = { ok: true, message: "OK" };
-    } catch (error) {
-      results.events = { ok: false, message: formatDebugError(error) };
-    }
-
-    setTestResults(results);
-    setTesting(false);
-  };
-
-  return (
-    <div className="rounded-2xl bg-white/70 p-4 text-xs text-ink/80 shadow-soft">
-      <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="text-sm font-semibold">Debug Panel</div>
-        <div className="text-[10px] uppercase tracking-wide text-ink/50">debug</div>
-      </div>
-      <div className="mt-3 grid gap-2">
-        <div><span className="font-semibold">Auth:</span> {authUser ? `${authUser.uid} (${authUser.email ?? "no-email"})` : "none"}</div>
-        <div><span className="font-semibold">activeClientId:</span> {activeClientId || "(empty)"}</div>
-        <div><span className="font-semibold">monthKey:</span> {monthKey}</div>
-        <div><span className="font-semibold">selectedDate:</span> {selectedDate}</div>
-        <div><span className="font-semibold">profile.roles:</span> {profile ? JSON.stringify(profile.roles ?? {}) : "null"}</div>
-        <div><span className="font-semibold">profile.allowedClients:</span> {profile ? JSON.stringify(profile.allowedClients ?? []) : "null"}</div>
-        <div><span className="font-semibold">/users/{authUser?.uid}:</span> {profileStatus}</div>
-        {profileData ? (
-          <pre className="whitespace-pre-wrap rounded-lg bg-ink/5 p-2 text-[11px] text-ink/70">
-            {JSON.stringify(profileData, null, 2)}
-          </pre>
-        ) : null}
-      </div>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={runPermissionTests}
-          disabled={testing}
-          className="rounded-full border border-ink/20 px-3 py-1 text-xs font-semibold text-ink transition hover:-translate-y-0.5 hover:shadow-soft disabled:opacity-60"
-        >
-          {testing ? "Testing..." : "Test permissions"}
-        </button>
-        {Object.keys(testResults).length > 0 ? (
-          <div className="text-[11px] text-ink/60">Results:</div>
-        ) : null}
-        {Object.entries(testResults).map(([key, result]) => (
-          <div key={key} className="text-[11px]">
-            <span className={result.ok ? "text-emerald-600" : "text-rose-600"}>
-              {key}: {result.ok ? "OK" : "ERROR"}
-            </span>
-            {!result.ok ? ` (${result.message})` : ""}
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function stripTimestampPatch<T extends { updatedAt?: string; createdAt?: string }>(patch: T) {
-  const { updatedAt, createdAt, ...rest } = patch;
-  return rest;
-}
-
 export default function HomePage() {
   const { authUser, profile, loading, isAdmin } = useCurrentUser();
-  const [data, setData] = useState<AppData | null>(null);
+  const [activeClientId, setActiveClientId] = useState("");
   const [viewDate, setViewDate] = useState(() => new Date());
   const [selectedDate, setSelectedDate] = useState(() => toISODate(new Date()));
   const [selectedItem, setSelectedItem] = useState<SelectedItem>(null);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [addModalTab, setAddModalTab] = useState<"post" | "event" | "paid">("post");
-  const [readsById, setReadsById] = useState<Record<string, string>>({});
-  const [daySeen, setDaySeen] = useState<Record<string, string>>({});
-  const [loadingData, setLoadingData] = useState(false);
-  const clearedLegacyRef = useRef(false);
+
+  const allowedClientIds = profile?.allowedClients ?? [];
+  const { clients } = useClients(allowedClientIds);
+
+  const activeClient = clients.find((client) => client.id === activeClientId) ?? null;
+
+  useEffect(() => {
+    if (loading || !profile) {
+      setActiveClientId("");
+      return;
+    }
+    const allowedIds = profile.allowedClients ?? [];
+    if (allowedIds.length === 0) {
+      setActiveClientId("");
+      return;
+    }
+    const preferred = getPreferredClientId();
+    const nextActive =
+      preferred && allowedIds.includes(preferred)
+        ? preferred
+        : allowedIds[0] ?? "";
+    setActiveClientId((prev) => (prev && allowedIds.includes(prev) ? prev : nextActive));
+  }, [loading, profile]);
+
+  useEffect(() => {
+    if (!activeClientId) {
+      return;
+    }
+    setPreferredClientId(activeClientId);
+    setSelectedItem(null);
+  }, [activeClientId]);
+
+  const monthKey = useMemo(
+    () => getMonthKey(toISODate(new Date(viewDate.getFullYear(), viewDate.getMonth(), 1))),
+    [viewDate]
+  );
+
+  const {
+    data: posts,
+    loading: loadingPosts,
+    syncStatus: postsSyncStatus,
+    createPost,
+    updatePost,
+    deletePost
+  } = usePosts(activeClient?.id ?? null);
+
+  const {
+    data: events,
+    loading: loadingEvents,
+    syncStatus: eventsSyncStatus,
+    createEvent,
+    updateEvent,
+    deleteEvent
+  } = useEvents(activeClient?.id ?? null);
+
+  const {
+    data: paid,
+    loading: loadingPaid,
+    syncStatus: paidSyncStatus,
+    createPaid,
+    updatePaid,
+    deletePaid
+  } = usePaid(activeClient?.enablePaid ? activeClient.id : null);
+
+  const { data: readsById } = useThreadReads(authUser?.uid ?? null, activeClient?.id ?? null, monthKey);
+  const { data: daySeen } = useDaySeen(authUser?.uid ?? null, monthKey);
+
+  const loadingData = loadingPosts || loadingEvents || (activeClient?.enablePaid ? loadingPaid : false);
+  const syncStatus: SyncStatus = combineSyncStatus([
+    postsSyncStatus,
+    eventsSyncStatus,
+    ...(activeClient?.enablePaid ? [paidSyncStatus] : [])
+  ]);
+
   const userMeta: ApprovalUser | null = authUser
     ? {
         uid: authUser.uid,
@@ -239,155 +125,6 @@ export default function HomePage() {
         ...(authUser.email ? { email: authUser.email } : {})
       }
     : null;
-  const [debugEnabled, setDebugEnabled] = useState(
-    () => process.env.NEXT_PUBLIC_DEBUG === "true"
-  );
-
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-    if (window.location.search.includes("debug=1")) {
-      setDebugEnabled(true);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (loading) {
-      return;
-    }
-    if (!authUser) {
-      setData(null);
-      return;
-    }
-    if (!profile) {
-      setData(null);
-      return;
-    }
-
-    let isActive = true;
-    const boot = async () => {
-      if (!clearedLegacyRef.current) {
-        clearLegacyLocalData();
-        clearedLegacyRef.current = true;
-      }
-      const clients = await fetchClientsForProfile(profile);
-      if (!isActive) {
-        return;
-      }
-      const preferred = getPreferredClientId();
-      const allowedIds = clients.map((client) => client.id);
-      const nextActive =
-        preferred && allowedIds.includes(preferred) ? preferred : allowedIds[0] ?? "";
-
-      setData({
-        version: DATA_VERSION,
-        activeClientId: nextActive,
-        clients,
-        postsByClient: {},
-        eventsByClient: {},
-        paidByClient: {}
-      });
-    };
-
-    void boot();
-
-    return () => {
-      isActive = false;
-    };
-  }, [loading, authUser, profile]);
-
-  const activeClient = data?.clients.find((client) => client.id === data.activeClientId) ?? null;
-  const posts = activeClient ? data?.postsByClient[activeClient.id] ?? [] : [];
-  const events = activeClient ? data?.eventsByClient[activeClient.id] ?? [] : [];
-  const paid = activeClient && activeClient.enablePaid
-    ? data?.paidByClient[activeClient.id] ?? []
-    : [];
-  const allowedClientsKey = profile?.allowedClients.join("|") ?? "";
-
-  const monthKey = useMemo(
-    () => getMonthKey(toISODate(new Date(viewDate.getFullYear(), viewDate.getMonth(), 1))),
-    [viewDate]
-  );
-
-  useEffect(() => {
-    if (!debugEnabled) {
-      return;
-    }
-    logAuthState("calendar");
-    console.groupCollapsed("[Debug] calendar context");
-    console.log("activeClientId", data?.activeClientId ?? "");
-    console.log("monthKey", monthKey);
-    console.log("selectedDate", selectedDate);
-    console.log("allowedClients", profile?.allowedClients ?? []);
-    console.groupEnd();
-  }, [debugEnabled, data?.activeClientId, monthKey, selectedDate, allowedClientsKey, profile]);
-
-  useEffect(() => {
-    if (!authUser || !profile || !data?.activeClientId) {
-      return;
-    }
-    if (!profile.allowedClients.includes(data.activeClientId)) {
-      return;
-    }
-    let isActive = true;
-    const load = async () => {
-      setLoadingData(true);
-      const { posts, events, paid } = await loadClientMonthData(data.activeClientId, monthKey);
-      const [reads, seen] = await Promise.all([
-        loadThreadReads(authUser.uid, data.activeClientId, monthKey),
-        loadDaySeen(authUser.uid, monthKey)
-      ]);
-      if (!isActive) {
-        return;
-      }
-      setData((prev) => {
-        if (!prev) {
-          return prev;
-        }
-        return {
-          ...prev,
-          postsByClient: { ...prev.postsByClient, [data.activeClientId]: posts },
-          eventsByClient: { ...prev.eventsByClient, [data.activeClientId]: events },
-          paidByClient: { ...prev.paidByClient, [data.activeClientId]: paid }
-        };
-      });
-      setReadsById(reads);
-      setDaySeen(seen);
-      setLoadingData(false);
-    };
-
-    void load();
-
-    return () => {
-      isActive = false;
-    };
-  }, [authUser, profile, data?.activeClientId, monthKey]);
-
-  useEffect(() => {
-    if (!data?.activeClientId) {
-      return;
-    }
-    setPreferredClientId(data.activeClientId);
-    setSelectedItem(null);
-  }, [data?.activeClientId]);
-
-  useEffect(() => {
-    if (!profile || !data) {
-      return;
-    }
-    if (profile.allowedClients.length === 0) {
-      if (data.activeClientId) {
-        setData((prev) => (prev ? { ...prev, activeClientId: "" } : prev));
-      }
-      return;
-    }
-    if (!profile.allowedClients.includes(data.activeClientId)) {
-      const nextActive = profile.allowedClients[0];
-      setData((prev) => (prev ? { ...prev, activeClientId: nextActive } : prev));
-      setPreferredClientId(nextActive);
-    }
-  }, [profile, data?.activeClientId, allowedClientsKey]);
 
   const selectedDateObj = useMemo(() => {
     const [year, month, day] = selectedDate.split("-").map(Number);
@@ -452,7 +189,7 @@ export default function HomePage() {
     paid.forEach((item) => {
       const start = new Date(`${item.startDate}T00:00:00`);
       const end = new Date(
-        `${(item.endDate && item.endDate >= item.startDate ? item.endDate : item.startDate)}T00:00:00`
+        `${item.endDate && item.endDate >= item.startDate ? item.endDate : item.startDate}T00:00:00`
       );
       const current = new Date(start);
       while (current <= end) {
@@ -473,16 +210,15 @@ export default function HomePage() {
     if (!profile.allowedClients.includes(activeClient.id)) {
       return;
     }
-    const collection = selectedItem.type === "post" ? posts : selectedItem.type === "event" ? events : paid;
+    const collection =
+      selectedItem.type === "post" ? posts : selectedItem.type === "event" ? events : paid;
     const item = collection.find((entry) => entry.id === selectedItem.id);
     if (!item) {
       return;
     }
     const dateKey = "date" in item ? item.date : item.startDate;
     const itemMonthKey = getMonthKey(dateKey);
-    void markThreadRead(authUser.uid, activeClient.id, itemMonthKey, item.id, selectedItem.type).then(() => {
-      setReadsById((prev) => ({ ...prev, [item.id]: new Date().toISOString() }));
-    });
+    void markThreadRead(authUser.uid, activeClient.id, itemMonthKey, item.id, selectedItem.type);
   }, [authUser, profile, activeClient, selectedItem, posts, events, paid]);
 
   useEffect(() => {
@@ -492,9 +228,7 @@ export default function HomePage() {
     if (!profile.allowedClients.includes(activeClient.id)) {
       return;
     }
-    void markDaySeen(authUser.uid, selectedDate).then(() => {
-      setDaySeen((prev) => ({ ...prev, [selectedDate]: new Date().toISOString() }));
-    });
+    void markDaySeen(authUser.uid, selectedDate);
   }, [authUser, profile, activeClient, selectedDate]);
 
   useEffect(() => {
@@ -546,13 +280,7 @@ export default function HomePage() {
     if (!profile || !profile.allowedClients.includes(clientId)) {
       return;
     }
-    setData((prev) => {
-      if (!prev) {
-        return prev;
-      }
-      return { ...prev, activeClientId: clientId };
-    });
-    setPreferredClientId(clientId);
+    setActiveClientId(clientId);
     setSelectedItem(null);
   };
 
@@ -560,486 +288,221 @@ export default function HomePage() {
     if (!authUser || !profile || !isAdmin) {
       return;
     }
-    const newClient = await createClient(name, authUser, enablePaid);
-    setData((prev) => {
-      if (!prev) {
-        return prev;
-      }
-      return {
-        ...prev,
-        clients: [...prev.clients, newClient],
-        activeClientId: newClient.id
-      };
-    });
+    const newClient = await createClient(name, authUser.uid, enablePaid);
+    setActiveClientId(newClient.id);
     setPreferredClientId(newClient.id);
   };
 
   const handleUpdateClient = async (clientId: string, patch: Partial<Client>) => {
-    setData((prev) => {
-      if (!prev) {
-        return prev;
-      }
-      return {
-        ...prev,
-        clients: prev.clients.map((client) =>
-          client.id === clientId ? { ...client, ...patch } : client
-        )
-      };
-    });
-    if (isAdmin) {
-      await updateClient(clientId, patch);
+    if (!isAdmin) {
+      return;
     }
+    await updateClient(clientId, patch, authUser?.uid ?? undefined);
   };
 
   const handleAddPost = async (payload: AddPostPayload) => {
     if (!activeClient || !authUser || !userMeta) {
       return;
     }
-    const newPost = addPost(activeClient.id, payload.date);
-    newPost.title = payload.title;
-    newPost.channels = payload.channels;
-    newPost.axis = payload.axis;
-    newPost.updatedAt = new Date().toISOString();
-    newPost.createdAt = newPost.updatedAt;
-    setSelectedItem({ type: "post", id: newPost.id });
-    setData((prev) => {
-      if (!prev) {
-        return prev;
-      }
-      const nextPostsByClient = ensureClientRecord(prev.postsByClient, activeClient.id);
-      return {
-        ...prev,
-        postsByClient: {
-          ...nextPostsByClient,
-          [activeClient.id]: [...(nextPostsByClient[activeClient.id] ?? []), newPost]
-        }
-      };
-    });
-    await createPostDoc(activeClient.id, newPost, userMeta);
+    const newId = await createPost(
+      {
+        date: payload.date,
+        title: payload.title,
+        channels: payload.channels,
+        axis: payload.axis
+      },
+      userMeta
+    );
+    if (!newId) {
+      return;
+    }
+    setSelectedItem({ type: "post", id: newId });
     setSelectedDate(payload.date);
     setViewDate(new Date(`${payload.date}T00:00:00`));
     setAddModalOpen(false);
   };
 
   const handleAddEvent = async (payload: AddEventPayload) => {
-    if (!activeClient || !authUser) {
+    if (!activeClient || !authUser || !userMeta) {
       return;
     }
-    const newEvent = addEvent(activeClient.id, payload.date);
-    newEvent.title = payload.title;
-    newEvent.note = payload.note;
-    newEvent.channels = payload.channels ?? [];
-    newEvent.axis = payload.axis;
-    newEvent.status = newEvent.status ?? "no_iniciado";
-    newEvent.chat = newEvent.chat ?? [];
-    newEvent.updatedAt = new Date().toISOString();
-    newEvent.createdAt = newEvent.updatedAt;
-    setData((prev) => {
-      if (!prev) {
-        return prev;
-      }
-      const nextEventsByClient = ensureClientRecord(prev.eventsByClient, activeClient.id);
-      return {
-        ...prev,
-        eventsByClient: {
-          ...nextEventsByClient,
-          [activeClient.id]: [...(nextEventsByClient[activeClient.id] ?? []), newEvent]
-        }
-      };
-    });
-    await createEventDoc(activeClient.id, newEvent, authUser.uid);
+    const newId = await createEvent(
+      {
+        date: payload.date,
+        title: payload.title,
+        note: payload.note,
+        channels: payload.channels ?? [],
+        axis: payload.axis
+      },
+      userMeta
+    );
+    if (!newId) {
+      return;
+    }
     setSelectedDate(payload.date);
     setViewDate(new Date(`${payload.date}T00:00:00`));
-    setSelectedItem({ type: "event", id: newEvent.id });
+    setSelectedItem({ type: "event", id: newId });
     setAddModalOpen(false);
   };
 
   const handleAddPaid = async (payload: AddPaidPayload) => {
-    if (!activeClient || !authUser) {
+    if (!activeClient || !authUser || !userMeta) {
       return;
     }
-    const newItem = addPaid(activeClient.id, payload.startDate, payload.endDate);
-    newItem.title = payload.title;
-    newItem.paidChannels = payload.paidChannels;
-    newItem.paidContent = payload.paidContent;
-    newItem.investmentAmount = payload.investmentAmount;
-    newItem.investmentCurrency = payload.investmentCurrency;
-    newItem.axis = payload.axis;
-    newItem.updatedAt = new Date().toISOString();
-    newItem.createdAt = newItem.updatedAt;
-    setSelectedItem({ type: "paid", id: newItem.id });
-    setData((prev) => {
-      if (!prev) {
-        return prev;
-      }
-      const nextPaidByClient = ensureClientRecord(prev.paidByClient, activeClient.id);
-      return {
-        ...prev,
-        paidByClient: {
-          ...nextPaidByClient,
-          [activeClient.id]: [...(nextPaidByClient[activeClient.id] ?? []), newItem]
-        }
-      };
-    });
-    await createPaidDoc(activeClient.id, newItem, authUser.uid);
+    const newId = await createPaid(
+      {
+        startDate: payload.startDate,
+        endDate: payload.endDate,
+        title: payload.title,
+        paidChannels: payload.paidChannels,
+        paidContent: payload.paidContent,
+        investmentAmount: payload.investmentAmount,
+        investmentCurrency: payload.investmentCurrency,
+        axis: payload.axis
+      },
+      userMeta
+    );
+    if (!newId) {
+      return;
+    }
+    setSelectedItem({ type: "paid", id: newId });
     setSelectedDate(payload.startDate);
     setViewDate(new Date(`${payload.startDate}T00:00:00`));
     setAddModalOpen(false);
   };
 
-  const updatePost = async (
-    postId: string,
-    patch: Partial<Post>,
-    firestorePatch?: Record<string, any>
-  ) => {
-    if (!activeClient || !authUser) {
+  const handleUpdatePost = async (postId: string, patch: Partial<Post>) => {
+    if (!activeClient || !userMeta) {
       return;
     }
-    const updatedAt = new Date().toISOString();
-    setData((prev) => {
-      if (!prev) {
-        return prev;
-      }
-      const nextPosts = (prev.postsByClient[activeClient.id] ?? []).map((post) =>
-        post.id === postId ? { ...post, ...patch, updatedAt } : post
-      );
-      return {
-        ...prev,
-        postsByClient: { ...prev.postsByClient, [activeClient.id]: nextPosts }
-      };
-    });
-    await updateItemDoc(
-      activeClient.id,
-      "posts",
-      postId,
-      firestorePatch ?? stripTimestampPatch(patch)
-    );
+    await updatePost(postId, patch, userMeta);
   };
 
-  const deletePost = async (postId: string) => {
-    if (!activeClient || !authUser) {
+  const handleDeletePost = async (postId: string) => {
+    if (!activeClient) {
       return;
     }
     if (selectedItem?.type === "post" && selectedItem.id === postId) {
       setSelectedItem(null);
     }
-    setData((prev) => {
-      if (!prev) {
-        return prev;
-      }
-      const nextPosts = (prev.postsByClient[activeClient.id] ?? []).filter(
-        (post) => post.id !== postId
-      );
-      return {
-        ...prev,
-        postsByClient: { ...prev.postsByClient, [activeClient.id]: nextPosts }
-      };
-    });
-    await deleteItemDoc(activeClient.id, "posts", postId);
+    await deletePost(postId);
   };
 
   const duplicatePost = async (postId: string) => {
-    if (!activeClient || !authUser) {
+    if (!activeClient || !userMeta) {
       return;
     }
-    const existing = posts;
-    const post = existing.find((item) => item.id === postId);
+    const post = posts.find((item) => item.id === postId);
     if (!post) {
       return;
     }
-    const now = new Date().toISOString();
-    const cloned: Post = {
-      ...post,
-      id: addPost(activeClient.id, post.date).id,
-      createdAt: now,
-      updatedAt: now,
-      lastMessageAt: null
-    };
-    setData((prev) => {
-      if (!prev) {
-        return prev;
-      }
-      return {
-        ...prev,
-        postsByClient: {
-          ...prev.postsByClient,
-          [activeClient.id]: [...existing, cloned]
-        }
-      };
-    });
-    if (!userMeta) {
-      return;
-    }
-    await createPostDoc(activeClient.id, cloned, userMeta);
-  };
-
-  const addMessage = async (postId: string, text: string) => {
-    if (!activeClient || !authUser || !userMeta) {
-      return;
-    }
-    const message = addChatMessage(text, userMeta);
-    const target = posts.find((post) => post.id === postId);
-    const threadMonthKey = target ? getMonthKey(target.date) : monthKey;
-    setData((prev) => {
-      if (!prev) {
-        return prev;
-      }
-      const nextPosts = (prev.postsByClient[activeClient.id] ?? []).map((post) =>
-        post.id === postId
-          ? {
-              ...post,
-              chat: [...post.chat, message],
-              updatedAt: message.createdAt,
-              lastMessageAt: message.createdAt
-            }
-          : post
-      );
-      return {
-        ...prev,
-        postsByClient: { ...prev.postsByClient, [activeClient.id]: nextPosts }
-      };
-    });
-    await appendItemMessage(activeClient.id, "posts", postId, message, authUser.uid);
-    await markThreadRead(authUser.uid, activeClient.id, threadMonthKey, postId, "post");
-    setReadsById((prev) => ({ ...prev, [postId]: message.createdAt }));
-  };
-
-  const addEventMessage = async (eventId: string, text: string) => {
-    if (!activeClient || !authUser || !userMeta) {
-      return;
-    }
-    const message = addChatMessage(text, userMeta);
-    const target = events.find((event) => event.id === eventId);
-    const threadMonthKey = target ? getMonthKey(target.date) : monthKey;
-    setData((prev) => {
-      if (!prev) {
-        return prev;
-      }
-      const nextEvents = (prev.eventsByClient[activeClient.id] ?? []).map((event) =>
-        event.id === eventId
-          ? {
-              ...event,
-              chat: [...event.chat, message],
-              updatedAt: message.createdAt,
-              lastMessageAt: message.createdAt
-            }
-          : event
-      );
-      return {
-        ...prev,
-        eventsByClient: { ...prev.eventsByClient, [activeClient.id]: nextEvents }
-      };
-    });
-    await appendItemMessage(activeClient.id, "events", eventId, message, authUser.uid);
-    await markThreadRead(authUser.uid, activeClient.id, threadMonthKey, eventId, "event");
-    setReadsById((prev) => ({ ...prev, [eventId]: message.createdAt }));
-  };
-
-  const addPaidMessage = async (paidId: string, text: string) => {
-    if (!activeClient || !authUser || !userMeta) {
-      return;
-    }
-    const message = addChatMessage(text, userMeta);
-    const target = paid.find((item) => item.id === paidId);
-    const threadMonthKey = target ? getMonthKey(target.startDate) : monthKey;
-    setData((prev) => {
-      if (!prev) {
-        return prev;
-      }
-      const nextPaid = (prev.paidByClient[activeClient.id] ?? []).map((item) =>
-        item.id === paidId
-          ? {
-              ...item,
-              chat: [...item.chat, message],
-              updatedAt: message.createdAt,
-              lastMessageAt: message.createdAt
-            }
-          : item
-      );
-      return {
-        ...prev,
-        paidByClient: { ...prev.paidByClient, [activeClient.id]: nextPaid }
-      };
-    });
-    await appendItemMessage(activeClient.id, "paids", paidId, message, authUser.uid);
-    await markThreadRead(authUser.uid, activeClient.id, threadMonthKey, paidId, "paid");
-    setReadsById((prev) => ({ ...prev, [paidId]: message.createdAt }));
-  };
-
-  const updateEvent = async (eventId: string, patch: Partial<EventItem>) => {
-    if (!activeClient || !authUser) {
-      return;
-    }
-    const updatedAt = new Date().toISOString();
-    setData((prev) => {
-      if (!prev) {
-        return prev;
-      }
-      const nextEvents = (prev.eventsByClient[activeClient.id] ?? []).map((event) =>
-        event.id === eventId ? { ...event, ...patch, updatedAt } : event
-      );
-      return {
-        ...prev,
-        eventsByClient: { ...prev.eventsByClient, [activeClient.id]: nextEvents }
-      };
-    });
-    await updateItemDoc(
-      activeClient.id,
-      "events",
-      eventId,
-      stripTimestampPatch(patch)
+    const newId = await createPost(
+      {
+        date: post.date,
+        title: post.title,
+        channels: post.channels,
+        axis: post.axis,
+        status: post.status,
+        brief: post.brief,
+        copyOut: post.copyOut,
+        pieceLink: post.pieceLink
+      },
+      userMeta
     );
+    if (newId) {
+      setSelectedItem({ type: "post", id: newId });
+    }
   };
 
-  const updatePaid = async (paidId: string, patch: Partial<PaidItem>) => {
-    if (!activeClient || !authUser) {
+  const handleUpdateEvent = async (eventId: string, patch: Partial<EventItem>) => {
+    if (!activeClient || !userMeta) {
       return;
     }
-    const updatedAt = new Date().toISOString();
-    setData((prev) => {
-      if (!prev) {
-        return prev;
-      }
-      const nextPaid = (prev.paidByClient[activeClient.id] ?? []).map((item) =>
-        item.id === paidId ? { ...item, ...patch, updatedAt } : item
-      );
-      return {
-        ...prev,
-        paidByClient: { ...prev.paidByClient, [activeClient.id]: nextPaid }
-      };
-    });
-    await updateItemDoc(
-      activeClient.id,
-      "paids",
-      paidId,
-      stripTimestampPatch(patch)
-    );
+    await updateEvent(eventId, patch, userMeta);
   };
 
-  const deleteEvent = async (eventId: string) => {
-    if (!activeClient || !authUser) {
+  const handleDeleteEvent = async (eventId: string) => {
+    if (!activeClient) {
       return;
     }
     if (selectedItem?.type === "event" && selectedItem.id === eventId) {
       setSelectedItem(null);
     }
-    setData((prev) => {
-      if (!prev) {
-        return prev;
-      }
-      const nextEvents = (prev.eventsByClient[activeClient.id] ?? []).filter(
-        (event) => event.id !== eventId
-      );
-      return {
-        ...prev,
-        eventsByClient: { ...prev.eventsByClient, [activeClient.id]: nextEvents }
-      };
-    });
-    await deleteItemDoc(activeClient.id, "events", eventId);
+    await deleteEvent(eventId);
   };
 
-  const deletePaid = async (paidId: string) => {
-    if (!activeClient || !authUser) {
+  const duplicateEvent = async (eventId: string) => {
+    if (!activeClient || !userMeta) {
+      return;
+    }
+    const event = events.find((item) => item.id === eventId);
+    if (!event) {
+      return;
+    }
+    const newId = await createEvent(
+      {
+        date: event.date,
+        title: event.title,
+        note: event.note,
+        channels: event.channels,
+        axis: event.axis,
+        status: event.status
+      },
+      userMeta
+    );
+    if (newId) {
+      setSelectedItem({ type: "event", id: newId });
+    }
+  };
+
+  const handleUpdatePaid = async (paidId: string, patch: Partial<PaidItem>) => {
+    if (!activeClient || !userMeta) {
+      return;
+    }
+    await updatePaid(paidId, patch, userMeta);
+  };
+
+  const handleDeletePaid = async (paidId: string) => {
+    if (!activeClient) {
       return;
     }
     if (selectedItem?.type === "paid" && selectedItem.id === paidId) {
       setSelectedItem(null);
     }
-    setData((prev) => {
-      if (!prev) {
-        return prev;
-      }
-      const nextPaid = (prev.paidByClient[activeClient.id] ?? []).filter(
-        (item) => item.id !== paidId
-      );
-      return {
-        ...prev,
-        paidByClient: { ...prev.paidByClient, [activeClient.id]: nextPaid }
-      };
-    });
-    await deleteItemDoc(activeClient.id, "paids", paidId);
-  };
-
-  const duplicateEvent = async (eventId: string) => {
-    if (!activeClient || !authUser) {
-      return;
-    }
-    const existing = events;
-    const event = existing.find((item) => item.id === eventId);
-    if (!event) {
-      return;
-    }
-    const now = new Date().toISOString();
-    const cloned: EventItem = {
-      ...event,
-      id: addEvent(activeClient.id, event.date).id,
-      createdAt: now,
-      updatedAt: now,
-      lastMessageAt: null
-    };
-    setData((prev) => {
-      if (!prev) {
-        return prev;
-      }
-      return {
-        ...prev,
-        eventsByClient: {
-          ...prev.eventsByClient,
-          [activeClient.id]: [...existing, cloned]
-        }
-      };
-    });
-    await createEventDoc(activeClient.id, cloned, authUser.uid);
+    await deletePaid(paidId);
   };
 
   const duplicatePaid = async (paidId: string) => {
-    if (!activeClient || !authUser) {
+    if (!activeClient || !userMeta) {
       return;
     }
-    const existing = paid;
-    const item = existing.find((paidItem) => paidItem.id === paidId);
+    const item = paid.find((paidItem) => paidItem.id === paidId);
     if (!item) {
       return;
     }
-    const now = new Date().toISOString();
-    const cloned: PaidItem = {
-      ...item,
-      id: addPaid(activeClient.id, item.startDate, item.endDate).id,
-      createdAt: now,
-      updatedAt: now,
-      lastMessageAt: null
-    };
-    setData((prev) => {
-      if (!prev) {
-        return prev;
-      }
-      return {
-        ...prev,
-        paidByClient: {
-          ...prev.paidByClient,
-          [activeClient.id]: [...existing, cloned]
-        }
-      };
-    });
-    await createPaidDoc(activeClient.id, cloned, authUser.uid);
+    const newId = await createPaid(
+      {
+        startDate: item.startDate,
+        endDate: item.endDate,
+        title: item.title,
+        status: item.status,
+        axis: item.axis,
+        paidChannels: item.paidChannels,
+        paidContent: item.paidContent,
+        investmentAmount: item.investmentAmount,
+        investmentCurrency: item.investmentCurrency
+      },
+      userMeta
+    );
+    if (newId) {
+      setSelectedItem({ type: "paid", id: newId });
+    }
   };
-
-  const debugPanel = (
-    <DebugPanel
-      enabled={debugEnabled}
-      authUser={authUser}
-      profile={profile}
-      activeClientId={data?.activeClientId ?? ""}
-      monthKey={monthKey}
-      selectedDate={selectedDate}
-    />
-  );
 
   if (loading) {
     return (
       <div className="p-10 text-sm text-ink/60">
         Cargando...
-        {debugPanel}
       </div>
     );
   }
@@ -1062,42 +525,40 @@ export default function HomePage() {
             Entrar con Google
           </button>
         </div>
-        {debugPanel}
       </div>
     );
   }
 
-  if (!data) {
+  if (!profile) {
     return (
       <div className="p-10 text-sm text-ink/60">
         Cargando datos...
-        {debugPanel}
       </div>
     );
   }
 
-  if (!data.activeClientId || !activeClient) {
+  if (!activeClientId || !activeClient) {
     return (
       <div className="min-h-screen px-6 pb-10 pt-6">
         <div className="mx-auto flex max-w-4xl flex-col gap-6">
           <Header
             onOpenSettings={() => setSettingsOpen(true)}
             user={authUser}
-            clients={data.clients}
-            activeClientId={data.activeClientId}
+            clients={clients}
+            activeClientId={activeClientId}
             isAdmin={isAdmin}
             onSelectClient={handleSelectClient}
             onCreateClient={handleCreateClient}
             onLogout={() => {
               void logout();
             }}
+            syncStatus={syncStatus}
           />
           <div className="rounded-2xl bg-white/70 p-6 text-center text-sm text-ink/60 shadow-soft">
             {isAdmin
               ? "Crea un cliente para comenzar."
               : "Seleccioná un cliente asignado para comenzar."}
           </div>
-          {debugPanel}
         </div>
       </div>
     );
@@ -1109,14 +570,15 @@ export default function HomePage() {
         <Header
           onOpenSettings={() => setSettingsOpen(true)}
           user={authUser}
-          clients={data.clients}
-          activeClientId={data.activeClientId}
+          clients={clients}
+          activeClientId={activeClientId}
           isAdmin={isAdmin}
           onSelectClient={handleSelectClient}
           onCreateClient={handleCreateClient}
           onLogout={() => {
             void logout();
           }}
+          syncStatus={syncStatus}
         />
 
         <div className="grid gap-6 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
@@ -1172,7 +634,7 @@ export default function HomePage() {
                 selectedDate={selectedDate}
                 posts={posts}
                 events={events}
-                paid={paid}
+                paid={activeClient?.enablePaid ? paid : []}
                 axes={activeClient?.axes ?? []}
                 dayUpdates={dayUpdates ?? EMPTY_MAP}
                 onSelectDate={handleSelectDate}
@@ -1196,6 +658,7 @@ export default function HomePage() {
           <RightPanel
             viewDate={viewDate}
             selectedDate={selectedDateObj}
+            clientId={activeClient.id}
             posts={postsForDay}
             events={eventsForDay}
             paid={paidForDay}
@@ -1213,32 +676,26 @@ export default function HomePage() {
             channels={activeClient?.channels ?? []}
             paidChannels={activeClient?.paidChannels ?? []}
             axes={activeClient?.axes ?? []}
-            onUpdatePost={updatePost}
-            onDeletePost={deletePost}
+            onUpdatePost={handleUpdatePost}
+            onDeletePost={handleDeletePost}
             onDuplicatePost={duplicatePost}
-            onAddMessage={addMessage}
-            onAddEventMessage={addEventMessage}
-            onUpdateEvent={updateEvent}
-            onDeleteEvent={deleteEvent}
+            onUpdateEvent={handleUpdateEvent}
+            onDeleteEvent={handleDeleteEvent}
             onDuplicateEvent={duplicateEvent}
-            onAddPaidMessage={addPaidMessage}
-            onUpdatePaid={updatePaid}
-            onDeletePaid={deletePaid}
+            onUpdatePaid={handleUpdatePaid}
+            onDeletePaid={handleDeletePaid}
             onDuplicatePaid={duplicatePaid}
             enablePaid={activeClient?.enablePaid ?? false}
             unreadById={unreadById}
             currentUser={userMeta ?? { uid: authUser.uid }}
           />
-          {debugPanel}
         </div>
       </div>
 
       <AddItemModal
         isOpen={addModalOpen}
         defaultDate={selectedDate}
-        initialTab={
-          addModalTab === "paid" && !activeClient?.enablePaid ? "post" : addModalTab
-        }
+        initialTab={addModalTab === "paid" && !activeClient?.enablePaid ? "post" : addModalTab}
         channels={activeClient?.channels ?? []}
         paidChannels={activeClient?.paidChannels ?? []}
         axes={activeClient?.axes ?? []}
@@ -1257,7 +714,7 @@ export default function HomePage() {
 
       <SettingsModal
         isOpen={settingsOpen}
-        data={data}
+        data={{ activeClientId, clients } satisfies AppData}
         onClose={() => setSettingsOpen(false)}
         onSelectClient={handleSelectClient}
         onUpdateClient={handleUpdateClient}

@@ -6,6 +6,8 @@ import PostEditor from "@/components/PostEditor";
 import EventEditor from "@/components/EventEditor";
 import PaidEditor from "@/components/PaidEditor";
 import MonthSnapshotCard from "@/components/MonthSnapshotCard";
+import { useChat } from "@/lib/data/useChat";
+import { buildChatId } from "@/lib/data/helpers";
 
 type SelectedItem = {
   type: "post" | "event" | "paid";
@@ -15,6 +17,7 @@ type SelectedItem = {
 type RightPanelProps = {
   viewDate: Date;
   selectedDate: Date;
+  clientId: string;
   posts: Post[];
   events: EventItem[];
   paid: PaidItem[];
@@ -26,12 +29,9 @@ type RightPanelProps = {
   onSelectEvent: (eventId: string) => void;
   onSelectPaid: (paidId: string) => void;
   onOpenAdd: () => void;
-  onUpdatePost: (postId: string, patch: Partial<Post>, firestorePatch?: Record<string, any>) => void;
+  onUpdatePost: (postId: string, patch: Partial<Post>) => void;
   onDeletePost: (postId: string) => void;
   onDuplicatePost: (postId: string) => void;
-  onAddMessage: (postId: string, text: string) => void;
-  onAddPaidMessage: (paidId: string, text: string) => void;
-  onAddEventMessage: (eventId: string, text: string) => void;
   onUpdateEvent: (eventId: string, patch: Partial<EventItem>) => void;
   onDeleteEvent: (eventId: string) => void;
   onDuplicateEvent: (eventId: string) => void;
@@ -49,6 +49,7 @@ type RightPanelProps = {
 export default function RightPanel({
   viewDate,
   selectedDate,
+  clientId,
   posts,
   events,
   paid,
@@ -63,9 +64,6 @@ export default function RightPanel({
   onUpdatePost,
   onDeletePost,
   onDuplicatePost,
-  onAddMessage,
-  onAddEventMessage,
-  onAddPaidMessage,
   onUpdateEvent,
   onDeleteEvent,
   onDuplicateEvent,
@@ -91,6 +89,21 @@ export default function RightPanel({
     selectedItem?.type === "paid"
       ? paid.find((item) => item.id === selectedItem.id) ?? null
       : null;
+
+  const chatId = selectedItem
+    ? buildChatId(`${selectedItem.type}s` as "posts" | "events" | "paids", selectedItem.id)
+    : null;
+  const { data: messages, loading: chatLoading, error: chatError, sendMessage } = useChat(
+    clientId,
+    chatId
+  );
+
+  const handleSendMessage = (text: string) => {
+    if (!selectedItem) {
+      return;
+    }
+    void sendMessage(text, currentUser);
+  };
 
   return (
     <aside className="flex flex-col gap-4">
@@ -145,22 +158,22 @@ export default function RightPanel({
                           key={item.id}
                           type="button"
                           onClick={() => onSelectPaid(item.id)}
-                        className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition ${
-                          selectedItem?.type === "paid" && selectedItem.id === item.id
-                            ? "bg-ink text-white"
-                            : "bg-slate-200 text-ink/70"
-                        }`}
-                      >
-                        <span className="flex items-center gap-1">
-                          $ {item.title || "Sin titulo"}
-                          {unreadById[item.id] ? (
-                            <span className="h-2 w-2 rounded-full bg-red-500" />
-                          ) : null}
-                        </span>
-                      </button>
-                    ))
-                  )}
-                </div>
+                          className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold transition ${
+                            selectedItem?.type === "paid" && selectedItem.id === item.id
+                              ? "bg-ink text-white"
+                              : "bg-slate-200 text-ink/70"
+                          }`}
+                        >
+                          <span className="flex items-center gap-1">
+                            $ {item.title || "Sin titulo"}
+                            {unreadById[item.id] ? (
+                              <span className="h-2 w-2 rounded-full bg-red-500" />
+                            ) : null}
+                          </span>
+                        </button>
+                      ))
+                    )}
+                  </div>
                 </div>
               ) : null}
               <div>
@@ -223,7 +236,10 @@ export default function RightPanel({
           onUpdate={onUpdateEvent}
           onDelete={onDeleteEvent}
           onDuplicate={onDuplicateEvent}
-          onAddMessage={onAddEventMessage}
+          onSendMessage={handleSendMessage}
+          messages={messages}
+          chatLoading={chatLoading}
+          chatError={chatError}
           currentUser={currentUser}
         />
       ) : selectedItem?.type === "paid" ? (
@@ -234,7 +250,10 @@ export default function RightPanel({
           onUpdate={onUpdatePaid}
           onDelete={onDeletePaid}
           onDuplicate={onDuplicatePaid}
-          onAddMessage={onAddPaidMessage}
+          onSendMessage={handleSendMessage}
+          messages={messages}
+          chatLoading={chatLoading}
+          chatError={chatError}
           currentUser={currentUser}
         />
       ) : (
@@ -245,7 +264,10 @@ export default function RightPanel({
           onUpdate={onUpdatePost}
           onDelete={onDeletePost}
           onDuplicate={onDuplicatePost}
-          onAddMessage={onAddMessage}
+          onSendMessage={handleSendMessage}
+          messages={messages}
+          chatLoading={chatLoading}
+          chatError={chatError}
           currentUser={currentUser}
         />
       )}

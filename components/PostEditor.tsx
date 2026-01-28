@@ -2,11 +2,11 @@
 
 import ChatBox from "@/components/ChatBox";
 import { useEffect, useState } from "react";
-import { serverTimestamp } from "firebase/firestore";
 import type {
   ApprovalBlock,
   ApprovalUser,
   Axis,
+  ChatMessage,
   LinkApprovalBlock,
   Post,
   PostStatus
@@ -16,10 +16,13 @@ type PostEditorProps = {
   post: Post | null;
   channels: string[];
   axes: Axis[];
-  onUpdate: (postId: string, patch: Partial<Post>, firestorePatch?: Record<string, any>) => void;
+  onUpdate: (postId: string, patch: Partial<Post>) => void;
   onDelete: (postId: string) => void;
   onDuplicate: (postId: string) => void;
-  onAddMessage: (postId: string, text: string) => void;
+  onSendMessage: (text: string) => void;
+  messages: ChatMessage[];
+  chatLoading: boolean;
+  chatError: Error | null;
   currentUser: ApprovalUser;
 };
 
@@ -46,7 +49,10 @@ export default function PostEditor({
   onUpdate,
   onDelete,
   onDuplicate,
-  onAddMessage,
+  onSendMessage,
+  messages,
+  chatLoading,
+  chatError,
   currentUser
 }: PostEditorProps) {
   const [hasChanges, setHasChanges] = useState(false);
@@ -118,11 +124,7 @@ export default function PostEditor({
             const value = event.target.value;
             const now = new Date().toISOString();
             const nextBrief = { ...brief, text: value, updatedAt: now, updatedBy: authorMeta };
-            onUpdate(post.id, { brief: nextBrief }, {
-              "brief.text": value,
-              "brief.updatedAt": serverTimestamp(),
-              "brief.updatedBy": authorMeta
-            });
+            onUpdate(post.id, { brief: nextBrief });
             setHasChanges(true);
           }}
           rows={3}
@@ -145,13 +147,7 @@ export default function PostEditor({
                   updatedAt: now,
                   updatedBy: authorMeta
                 };
-                onUpdate(post.id, { brief: nextBrief }, {
-                  "brief.approved": checked,
-                  "brief.approvedAt": checked ? serverTimestamp() : null,
-                  "brief.approvedBy": checked ? authorMeta : null,
-                  "brief.updatedAt": serverTimestamp(),
-                  "brief.updatedBy": authorMeta
-                });
+                onUpdate(post.id, { brief: nextBrief });
                 setHasChanges(true);
               }}
               className="peer sr-only"
@@ -172,11 +168,7 @@ export default function PostEditor({
             const value = event.target.value;
             const now = new Date().toISOString();
             const nextCopy = { ...copyOut, text: value, updatedAt: now, updatedBy: authorMeta };
-            onUpdate(post.id, { copyOut: nextCopy }, {
-              "copyOut.text": value,
-              "copyOut.updatedAt": serverTimestamp(),
-              "copyOut.updatedBy": authorMeta
-            });
+            onUpdate(post.id, { copyOut: nextCopy });
             setHasChanges(true);
           }}
           rows={3}
@@ -199,13 +191,7 @@ export default function PostEditor({
                   updatedAt: now,
                   updatedBy: authorMeta
                 };
-                onUpdate(post.id, { copyOut: nextCopy }, {
-                  "copyOut.approved": checked,
-                  "copyOut.approvedAt": checked ? serverTimestamp() : null,
-                  "copyOut.approvedBy": checked ? authorMeta : null,
-                  "copyOut.updatedAt": serverTimestamp(),
-                  "copyOut.updatedBy": authorMeta
-                });
+                onUpdate(post.id, { copyOut: nextCopy });
                 setHasChanges(true);
               }}
               className="peer sr-only"
@@ -226,11 +212,7 @@ export default function PostEditor({
             const value = event.target.value;
             const now = new Date().toISOString();
             const nextLink = { ...pieceLink, url: value, updatedAt: now, updatedBy: authorMeta };
-            onUpdate(post.id, { pieceLink: nextLink }, {
-              "pieceLink.url": value,
-              "pieceLink.updatedAt": serverTimestamp(),
-              "pieceLink.updatedBy": authorMeta
-            });
+            onUpdate(post.id, { pieceLink: nextLink });
             setHasChanges(true);
           }}
           placeholder="Pegá el link final..."
@@ -252,13 +234,7 @@ export default function PostEditor({
                   updatedAt: now,
                   updatedBy: authorMeta
                 };
-                onUpdate(post.id, { pieceLink: nextLink }, {
-                  "pieceLink.approved": checked,
-                  "pieceLink.approvedAt": checked ? serverTimestamp() : null,
-                  "pieceLink.approvedBy": checked ? authorMeta : null,
-                  "pieceLink.updatedAt": serverTimestamp(),
-                  "pieceLink.updatedBy": authorMeta
-                });
+                onUpdate(post.id, { pieceLink: nextLink });
                 setHasChanges(true);
               }}
               className="peer sr-only"
@@ -275,10 +251,16 @@ export default function PostEditor({
         <label className="text-xs font-medium text-ink/60">Chat / comentarios</label>
         <div className="mt-2 h-64">
           <ChatBox
-            messages={post.chat}
+            messages={messages}
             currentUser={currentUser}
-            onAdd={(text) => onAddMessage(post.id, text)}
+            onAdd={(text) => onSendMessage(text)}
           />
+          {chatLoading ? (
+            <p className="mt-2 text-xs text-ink/50">Cargando mensajes...</p>
+          ) : null}
+          {chatError ? (
+            <p className="mt-2 text-xs text-rose-600">Error al cargar chat.</p>
+          ) : null}
         </div>
       </div>
 

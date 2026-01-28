@@ -95,7 +95,7 @@ export default function AddItemModal({
     setPaidCurrency("ARS");
     setPaidAxis("");
     setPaidEndDate("");
-  }, [isOpen, defaultDate, initialTab]);
+  }, [isOpen, defaultDate, initialTab, enablePaid]);
 
   const canCreatePost = useMemo(() => {
     if (!dateValue) {

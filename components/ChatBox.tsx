@@ -56,9 +56,9 @@ export default function ChatBox({ messages, onAdd, currentUser }: ChatBoxProps) 
           <p className="text-sm text-ink/50">Todavia no hay comentarios.</p>
         ) : (
           sorted.map((message) => {
-            const isOwn = currentUser?.uid && message.authorUid === currentUser.uid;
+            const isOwn = currentUser?.uid && message.uid === currentUser.uid;
             const authorName =
-              message.authorName || message.authorEmail || message.author || "Usuario";
+              message.displayName || message.email || message.author || "Usuario";
             return (
               <div
                 key={message.id}

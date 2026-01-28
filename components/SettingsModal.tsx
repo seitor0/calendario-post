@@ -2,7 +2,7 @@
 
 import { ChangeEvent, useRef, useState } from "react";
 import type { AppData, Axis, Client } from "@/lib/types";
-import { makeId } from "@/lib/storage";
+import { makeId } from "@/lib/data/ids";
 
 type SettingsModalProps = {
   isOpen: boolean;

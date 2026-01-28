@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import type { User } from "firebase/auth";
-import type { Client } from "@/lib/types";
+import type { Client, SyncStatus } from "@/lib/types";
 
 type HeaderProps = {
   onOpenSettings: () => void;
@@ -13,6 +13,7 @@ type HeaderProps = {
   onSelectClient: (clientId: string) => void;
   onCreateClient: (name: string) => void;
   onLogout: () => void;
+  syncStatus?: SyncStatus;
 };
 
 export default function Header({
@@ -23,7 +24,8 @@ export default function Header({
   isAdmin,
   onSelectClient,
   onCreateClient,
-  onLogout
+  onLogout,
+  syncStatus = "saved"
 }: HeaderProps) {
   const [newClientName, setNewClientName] = useState("");
   const activeClient = clients.find((client) => client.id === activeClientId) ?? null;
@@ -37,6 +39,12 @@ export default function Header({
   const avatarSrc = user.photoURL || "";
   const clientLogoSrc = activeClient?.logoDataUrl || "/logo_borrador.png";
   const clientLogoAlt = activeClient?.name || "Calendario Post";
+  const statusConfig: Record<SyncStatus, { label: string; className: string }> = {
+    saved: { label: "Guardado", className: "bg-emerald-500/10 text-emerald-700" },
+    saving: { label: "Guardando...", className: "bg-amber-500/10 text-amber-700" },
+    offline: { label: "Sin conexion", className: "bg-rose-500/10 text-rose-700" },
+    error: { label: "Error", className: "bg-rose-500/10 text-rose-700" }
+  };
 
   const handleCreateClient = (event: FormEvent) => {
     event.preventDefault();
@@ -67,6 +75,11 @@ export default function Header({
       </div>
 
       <div className="flex items-center gap-3">
+        <span
+          className={`rounded-full px-3 py-1 text-[11px] font-semibold ${statusConfig[syncStatus].className}`}
+        >
+          {statusConfig[syncStatus].label}
+        </span>
         <div className="flex items-center gap-3 rounded-full border border-ink/10 bg-white px-3 py-2 text-sm font-semibold text-ink shadow-sm">
           <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-skysoft text-xs font-semibold text-ink">
             {avatarSrc ? (

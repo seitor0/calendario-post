@@ -2,7 +2,7 @@
 
 import ChatBox from "@/components/ChatBox";
 import { useEffect, useState } from "react";
-import type { ApprovalUser, Axis, PaidItem, PostStatus } from "@/lib/types";
+import type { ApprovalUser, Axis, ChatMessage, PaidItem, PostStatus } from "@/lib/types";
 
 type PaidEditorProps = {
   item: PaidItem | null;
@@ -11,7 +11,10 @@ type PaidEditorProps = {
   onUpdate: (paidId: string, patch: Partial<PaidItem>) => void;
   onDelete: (paidId: string) => void;
   onDuplicate: (paidId: string) => void;
-  onAddMessage: (paidId: string, text: string) => void;
+  onSendMessage: (text: string) => void;
+  messages: ChatMessage[];
+  chatLoading: boolean;
+  chatError: Error | null;
   currentUser: ApprovalUser;
 };
 
@@ -38,7 +41,10 @@ export default function PaidEditor({
   onUpdate,
   onDelete,
   onDuplicate,
-  onAddMessage,
+  onSendMessage,
+  messages,
+  chatLoading,
+  chatError,
   currentUser
 }: PaidEditorProps) {
   const [hasChanges, setHasChanges] = useState(false);
@@ -108,10 +114,16 @@ export default function PaidEditor({
         <label className="text-xs font-medium text-ink/60">Chat / comentarios</label>
         <div className="mt-2 h-64">
           <ChatBox
-            messages={item.chat}
+            messages={messages}
             currentUser={currentUser}
-            onAdd={(text) => onAddMessage(item.id, text)}
+            onAdd={(text) => onSendMessage(text)}
           />
+          {chatLoading ? (
+            <p className="mt-2 text-xs text-ink/50">Cargando mensajes...</p>
+          ) : null}
+          {chatError ? (
+            <p className="mt-2 text-xs text-rose-600">Error al cargar chat.</p>
+          ) : null}
         </div>
       </div>
 

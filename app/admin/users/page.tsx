@@ -1,34 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { collection, doc, getDocs, updateDoc } from "firebase/firestore";
-import { db } from "@/lib/firebase";
+import { useEffect, useState } from "react";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { logout } from "@/lib/auth";
 import type { UserRoles } from "@/lib/types";
 import { useRouter } from "next/navigation";
+import { useAdminUsers, type AdminUser } from "@/lib/data/useAdminUsers";
 
 const ROLE_KEYS = ["admin", "supervisor", "content", "validation", "design"] as const;
 
-type ClientOption = {
-  id: string;
-  name: string;
-};
-
-type AdminUser = {
-  uid: string;
-  displayName?: string;
-  email?: string;
-  roles: UserRoles;
-  allowedClients: string[];
-};
-
 export default function AdminUsersPage() {
-  const { authUser, profile, loading, isAdmin } = useCurrentUser();
+  const { authUser, loading, isAdmin } = useCurrentUser();
   const router = useRouter();
-  const [loadingData, setLoadingData] = useState(false);
-  const [users, setUsers] = useState<AdminUser[]>([]);
-  const [clients, setClients] = useState<ClientOption[]>([]);
+  const { users, clients, loading: loadingData, updateUser, clientNameById } = useAdminUsers(
+    Boolean(authUser && isAdmin && !loading)
+  );
   const [editing, setEditing] = useState<AdminUser | null>(null);
   const [draftRoles, setDraftRoles] = useState<UserRoles>({});
   const [draftClients, setDraftClients] = useState<string[]>([]);
@@ -44,58 +30,6 @@ export default function AdminUsersPage() {
       router.replace("/");
     }
   }, [loading, authUser, isAdmin, router]);
-
-  useEffect(() => {
-    if (loading || !authUser || !isAdmin) {
-      return;
-    }
-    let active = true;
-    const load = async () => {
-      setLoadingData(true);
-      const [userSnap, clientSnap] = await Promise.all([
-        getDocs(collection(db, "users")),
-        getDocs(collection(db, "clients"))
-      ]);
-      if (!active) {
-        return;
-      }
-      const clientList = clientSnap.docs.map((docSnap) => {
-        const data = docSnap.data() as { name?: string };
-        return { id: docSnap.id, name: data.name ?? "Sin nombre" };
-      });
-      const userList = userSnap.docs.map((docSnap) => {
-        const data = docSnap.data() as {
-          displayName?: string;
-          email?: string;
-          roles?: UserRoles;
-          allowedClients?: string[];
-        };
-        return {
-          uid: docSnap.id,
-          displayName: data.displayName ?? undefined,
-          email: data.email ?? undefined,
-          roles: data.roles ?? {},
-          allowedClients: Array.isArray(data.allowedClients) ? data.allowedClients : []
-        } satisfies AdminUser;
-      });
-      setClients(clientList);
-      setUsers(userList);
-      setLoadingData(false);
-    };
-
-    void load();
-
-    return () => {
-      active = false;
-    };
-  }, [loading, authUser, isAdmin]);
-
-  const clientNameById = useMemo(() => {
-    return clients.reduce<Record<string, string>>((acc, client) => {
-      acc[client.id] = client.name;
-      return acc;
-    }, {});
-  }, [clients]);
 
   const handleOpenEdit = (target: AdminUser) => {
     setEditing(target);
@@ -123,17 +57,7 @@ export default function AdminUsersPage() {
     if (!editing) {
       return;
     }
-    await updateDoc(doc(db, "users", editing.uid), {
-      roles: draftRoles,
-      allowedClients: draftClients
-    });
-    setUsers((prev) =>
-      prev.map((item) =>
-        item.uid === editing.uid
-          ? { ...item, roles: { ...draftRoles }, allowedClients: [...draftClients] }
-          : item
-      )
-    );
+    await updateUser(editing.uid, draftRoles, draftClients);
     handleCloseEdit();
   };
 
