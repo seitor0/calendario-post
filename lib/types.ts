@@ -28,9 +28,9 @@ export type ChatMessage = {
   id: string;
   text: string;
   createdAt: string;
-  authorUid?: string;
-  authorName?: string;
-  authorEmail?: string;
+  uid?: string;
+  displayName?: string;
+  email?: string;
   author?: ChatAuthor | string;
 };
 
@@ -71,12 +71,13 @@ export type Post = {
   channels: string[];
   axis?: string;
   status: PostStatus;
-  chat: ChatMessage[];
   brief?: ApprovalBlock;
   copyOut?: ApprovalBlock;
   pieceLink?: LinkApprovalBlock;
   createdAt: string;
   updatedAt: string;
+  createdBy?: string;
+  updatedBy?: string;
   lastMessageAt?: string | null;
   // Etapa 2 (usuarios): userMeta: Record<userId, { lastSeenAt: string; unreadCount: number }>
 };
@@ -89,9 +90,10 @@ export type EventItem = {
   channels: string[];
   axis?: string;
   status: PostStatus;
-  chat: ChatMessage[];
   createdAt: string;
   updatedAt: string;
+  createdBy?: string;
+  updatedBy?: string;
   lastMessageAt?: string | null;
   // Etapa 2 (usuarios): userMeta: Record<userId, { lastSeenAt: string; unreadCount: number }>
 };
@@ -103,9 +105,10 @@ export type PaidItem = {
   title: string;
   status: PostStatus;
   axis?: string;
-  chat: ChatMessage[];
   createdAt: string;
   updatedAt: string;
+  createdBy?: string;
+  updatedBy?: string;
   lastMessageAt?: string | null;
   paidChannels: string[];
   paidContent: string;
@@ -124,10 +127,8 @@ export type Client = {
 };
 
 export type AppData = {
-  version: number;
   activeClientId: string;
   clients: Client[];
-  postsByClient: Record<string, Post[]>;
-  eventsByClient: Record<string, EventItem[]>;
-  paidByClient: Record<string, PaidItem[]>;
 };
+
+export type SyncStatus = "saved" | "saving" | "offline" | "error";

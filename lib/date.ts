@@ -5,6 +5,10 @@ export function toISODate(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
+export function getMonthKey(dateKey: string) {
+  return dateKey.slice(0, 7);
+}
+
 export function formatLongDate(date: Date) {
   return date.toLocaleDateString("es-AR", {
     year: "numeric",
