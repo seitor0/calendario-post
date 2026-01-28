@@ -39,8 +39,7 @@ import {
 } from "@/lib/storage";
 import { isDateInRange, toISODate } from "@/lib/date";
 import type { AppData, ApprovalUser, Client, EventItem, PaidItem, Post } from "@/lib/types";
-import { useAuthUser } from "@/lib/useAuthUser";
-import { useUserProfile } from "@/lib/useUserProfile";
+import { useCurrentUser } from "@/lib/useCurrentUser";
 import { loginWithGoogle, logout } from "@/lib/auth";
 
 const EMPTY_MAP: Record<string, boolean> = {};
@@ -56,8 +55,7 @@ function stripTimestampPatch<T extends { updatedAt?: string; createdAt?: string 
 }
 
 export default function HomePage() {
-  const { user, loading: authLoading } = useAuthUser();
-  const { profile, loadingProfile } = useUserProfile(user?.uid);
+  const { authUser, profile, loading, isAdmin } = useCurrentUser();
   const [data, setData] = useState<AppData | null>(null);
   const [viewDate, setViewDate] = useState(() => new Date());
   const [selectedDate, setSelectedDate] = useState(() => toISODate(new Date()));
@@ -69,20 +67,19 @@ export default function HomePage() {
   const [daySeen, setDaySeen] = useState<Record<string, string>>({});
   const [loadingData, setLoadingData] = useState(false);
   const clearedLegacyRef = useRef(false);
-  const userMeta: ApprovalUser | null = user
+  const userMeta: ApprovalUser | null = authUser
     ? {
-        uid: user.uid,
-        ...(user.displayName ? { name: user.displayName } : {}),
-        ...(user.email ? { email: user.email } : {})
+        uid: authUser.uid,
+        ...(authUser.displayName ? { name: authUser.displayName } : {}),
+        ...(authUser.email ? { email: authUser.email } : {})
       }
     : null;
-  const isAdmin = Boolean(profile?.roles?.admin);
 
   useEffect(() => {
-    if (authLoading || loadingProfile) {
+    if (loading) {
       return;
     }
-    if (!user) {
+    if (!authUser) {
       setData(null);
       return;
     }
@@ -121,7 +118,7 @@ export default function HomePage() {
     return () => {
       isActive = false;
     };
-  }, [authLoading, loadingProfile, user, profile]);
+  }, [loading, authUser, profile]);
 
   const activeClient = data?.clients.find((client) => client.id === data.activeClientId) ?? null;
   const posts = activeClient ? data?.postsByClient[activeClient.id] ?? [] : [];
@@ -129,6 +126,7 @@ export default function HomePage() {
   const paid = activeClient && activeClient.enablePaid
     ? data?.paidByClient[activeClient.id] ?? []
     : [];
+  const allowedClientsKey = profile?.allowedClients.join("|") ?? "";
 
   const monthKey = useMemo(
     () => getMonthKey(toISODate(new Date(viewDate.getFullYear(), viewDate.getMonth(), 1))),
@@ -136,7 +134,10 @@ export default function HomePage() {
   );
 
   useEffect(() => {
-    if (!user || !data?.activeClientId) {
+    if (!authUser || !profile || !data?.activeClientId) {
+      return;
+    }
+    if (!profile.allowedClients.includes(data.activeClientId)) {
       return;
     }
     let isActive = true;
@@ -144,8 +145,8 @@ export default function HomePage() {
       setLoadingData(true);
       const { posts, events, paid } = await loadClientMonthData(data.activeClientId, monthKey);
       const [reads, seen] = await Promise.all([
-        loadThreadReads(user.uid, data.activeClientId, monthKey),
-        loadDaySeen(user.uid, monthKey)
+        loadThreadReads(authUser.uid, data.activeClientId, monthKey),
+        loadDaySeen(authUser.uid, monthKey)
       ]);
       if (!isActive) {
         return;
@@ -171,7 +172,7 @@ export default function HomePage() {
     return () => {
       isActive = false;
     };
-  }, [user, data?.activeClientId, monthKey]);
+  }, [authUser, profile, data?.activeClientId, monthKey]);
 
   useEffect(() => {
     if (!data?.activeClientId) {
@@ -180,6 +181,23 @@ export default function HomePage() {
     setPreferredClientId(data.activeClientId);
     setSelectedItem(null);
   }, [data?.activeClientId]);
+
+  useEffect(() => {
+    if (!profile || !data) {
+      return;
+    }
+    if (profile.allowedClients.length === 0) {
+      if (data.activeClientId) {
+        setData((prev) => (prev ? { ...prev, activeClientId: "" } : prev));
+      }
+      return;
+    }
+    if (!profile.allowedClients.includes(data.activeClientId)) {
+      const nextActive = profile.allowedClients[0];
+      setData((prev) => (prev ? { ...prev, activeClientId: nextActive } : prev));
+      setPreferredClientId(nextActive);
+    }
+  }, [profile, data?.activeClientId, allowedClientsKey]);
 
   const selectedDateObj = useMemo(() => {
     const [year, month, day] = selectedDate.split("-").map(Number);
@@ -259,7 +277,10 @@ export default function HomePage() {
   }, [posts, events, paid, daySeen, viewDate]);
 
   useEffect(() => {
-    if (!user || !activeClient || !selectedItem) {
+    if (!authUser || !profile || !activeClient || !selectedItem) {
+      return;
+    }
+    if (!profile.allowedClients.includes(activeClient.id)) {
       return;
     }
     const collection = selectedItem.type === "post" ? posts : selectedItem.type === "event" ? events : paid;
@@ -269,19 +290,22 @@ export default function HomePage() {
     }
     const dateKey = "date" in item ? item.date : item.startDate;
     const itemMonthKey = getMonthKey(dateKey);
-    void markThreadRead(user.uid, activeClient.id, itemMonthKey, item.id, selectedItem.type).then(() => {
+    void markThreadRead(authUser.uid, activeClient.id, itemMonthKey, item.id, selectedItem.type).then(() => {
       setReadsById((prev) => ({ ...prev, [item.id]: new Date().toISOString() }));
     });
-  }, [user, activeClient, selectedItem, posts, events, paid]);
+  }, [authUser, profile, activeClient, selectedItem, posts, events, paid]);
 
   useEffect(() => {
-    if (!user || !activeClient) {
+    if (!authUser || !profile || !activeClient) {
       return;
     }
-    void markDaySeen(user.uid, selectedDate).then(() => {
+    if (!profile.allowedClients.includes(activeClient.id)) {
+      return;
+    }
+    void markDaySeen(authUser.uid, selectedDate).then(() => {
       setDaySeen((prev) => ({ ...prev, [selectedDate]: new Date().toISOString() }));
     });
-  }, [user, activeClient, selectedDate]);
+  }, [authUser, profile, activeClient, selectedDate]);
 
   useEffect(() => {
     const hasSelectedPost =
@@ -329,6 +353,9 @@ export default function HomePage() {
   };
 
   const handleSelectClient = (clientId: string) => {
+    if (!profile || !profile.allowedClients.includes(clientId)) {
+      return;
+    }
     setData((prev) => {
       if (!prev) {
         return prev;
@@ -340,10 +367,10 @@ export default function HomePage() {
   };
 
   const handleCreateClient = async (name: string, enablePaid = false) => {
-    if (!user || !profile || !isAdmin) {
+    if (!authUser || !profile || !isAdmin) {
       return;
     }
-    const newClient = await createClient(name, user, enablePaid);
+    const newClient = await createClient(name, authUser, enablePaid);
     setData((prev) => {
       if (!prev) {
         return prev;
@@ -375,7 +402,7 @@ export default function HomePage() {
   };
 
   const handleAddPost = async (payload: AddPostPayload) => {
-    if (!activeClient || !user || !userMeta) {
+    if (!activeClient || !authUser || !userMeta) {
       return;
     }
     const newPost = addPost(activeClient.id, payload.date);
@@ -405,7 +432,7 @@ export default function HomePage() {
   };
 
   const handleAddEvent = async (payload: AddEventPayload) => {
-    if (!activeClient || !user) {
+    if (!activeClient || !authUser) {
       return;
     }
     const newEvent = addEvent(activeClient.id, payload.date);
@@ -430,7 +457,7 @@ export default function HomePage() {
         }
       };
     });
-    await createEventDoc(activeClient.id, newEvent, user.uid);
+    await createEventDoc(activeClient.id, newEvent, authUser.uid);
     setSelectedDate(payload.date);
     setViewDate(new Date(`${payload.date}T00:00:00`));
     setSelectedItem({ type: "event", id: newEvent.id });
@@ -438,7 +465,7 @@ export default function HomePage() {
   };
 
   const handleAddPaid = async (payload: AddPaidPayload) => {
-    if (!activeClient || !user) {
+    if (!activeClient || !authUser) {
       return;
     }
     const newItem = addPaid(activeClient.id, payload.startDate, payload.endDate);
@@ -464,7 +491,7 @@ export default function HomePage() {
         }
       };
     });
-    await createPaidDoc(activeClient.id, newItem, user.uid);
+    await createPaidDoc(activeClient.id, newItem, authUser.uid);
     setSelectedDate(payload.startDate);
     setViewDate(new Date(`${payload.startDate}T00:00:00`));
     setAddModalOpen(false);
@@ -475,7 +502,7 @@ export default function HomePage() {
     patch: Partial<Post>,
     firestorePatch?: Record<string, any>
   ) => {
-    if (!activeClient || !user) {
+    if (!activeClient || !authUser) {
       return;
     }
     const updatedAt = new Date().toISOString();
@@ -500,7 +527,7 @@ export default function HomePage() {
   };
 
   const deletePost = async (postId: string) => {
-    if (!activeClient || !user) {
+    if (!activeClient || !authUser) {
       return;
     }
     if (selectedItem?.type === "post" && selectedItem.id === postId) {
@@ -522,7 +549,7 @@ export default function HomePage() {
   };
 
   const duplicatePost = async (postId: string) => {
-    if (!activeClient || !user) {
+    if (!activeClient || !authUser) {
       return;
     }
     const existing = posts;
@@ -557,7 +584,7 @@ export default function HomePage() {
   };
 
   const addMessage = async (postId: string, text: string) => {
-    if (!activeClient || !user || !userMeta) {
+    if (!activeClient || !authUser || !userMeta) {
       return;
     }
     const message = addChatMessage(text, userMeta);
@@ -582,13 +609,13 @@ export default function HomePage() {
         postsByClient: { ...prev.postsByClient, [activeClient.id]: nextPosts }
       };
     });
-    await appendItemMessage(activeClient.id, "posts", postId, message, user.uid);
-    await markThreadRead(user.uid, activeClient.id, threadMonthKey, postId, "post");
+    await appendItemMessage(activeClient.id, "posts", postId, message, authUser.uid);
+    await markThreadRead(authUser.uid, activeClient.id, threadMonthKey, postId, "post");
     setReadsById((prev) => ({ ...prev, [postId]: message.createdAt }));
   };
 
   const addEventMessage = async (eventId: string, text: string) => {
-    if (!activeClient || !user || !userMeta) {
+    if (!activeClient || !authUser || !userMeta) {
       return;
     }
     const message = addChatMessage(text, userMeta);
@@ -613,13 +640,13 @@ export default function HomePage() {
         eventsByClient: { ...prev.eventsByClient, [activeClient.id]: nextEvents }
       };
     });
-    await appendItemMessage(activeClient.id, "events", eventId, message, user.uid);
-    await markThreadRead(user.uid, activeClient.id, threadMonthKey, eventId, "event");
+    await appendItemMessage(activeClient.id, "events", eventId, message, authUser.uid);
+    await markThreadRead(authUser.uid, activeClient.id, threadMonthKey, eventId, "event");
     setReadsById((prev) => ({ ...prev, [eventId]: message.createdAt }));
   };
 
   const addPaidMessage = async (paidId: string, text: string) => {
-    if (!activeClient || !user || !userMeta) {
+    if (!activeClient || !authUser || !userMeta) {
       return;
     }
     const message = addChatMessage(text, userMeta);
@@ -644,13 +671,13 @@ export default function HomePage() {
         paidByClient: { ...prev.paidByClient, [activeClient.id]: nextPaid }
       };
     });
-    await appendItemMessage(activeClient.id, "paids", paidId, message, user.uid);
-    await markThreadRead(user.uid, activeClient.id, threadMonthKey, paidId, "paid");
+    await appendItemMessage(activeClient.id, "paids", paidId, message, authUser.uid);
+    await markThreadRead(authUser.uid, activeClient.id, threadMonthKey, paidId, "paid");
     setReadsById((prev) => ({ ...prev, [paidId]: message.createdAt }));
   };
 
   const updateEvent = async (eventId: string, patch: Partial<EventItem>) => {
-    if (!activeClient || !user) {
+    if (!activeClient || !authUser) {
       return;
     }
     const updatedAt = new Date().toISOString();
@@ -675,7 +702,7 @@ export default function HomePage() {
   };
 
   const updatePaid = async (paidId: string, patch: Partial<PaidItem>) => {
-    if (!activeClient || !user) {
+    if (!activeClient || !authUser) {
       return;
     }
     const updatedAt = new Date().toISOString();
@@ -700,7 +727,7 @@ export default function HomePage() {
   };
 
   const deleteEvent = async (eventId: string) => {
-    if (!activeClient || !user) {
+    if (!activeClient || !authUser) {
       return;
     }
     if (selectedItem?.type === "event" && selectedItem.id === eventId) {
@@ -722,7 +749,7 @@ export default function HomePage() {
   };
 
   const deletePaid = async (paidId: string) => {
-    if (!activeClient || !user) {
+    if (!activeClient || !authUser) {
       return;
     }
     if (selectedItem?.type === "paid" && selectedItem.id === paidId) {
@@ -744,7 +771,7 @@ export default function HomePage() {
   };
 
   const duplicateEvent = async (eventId: string) => {
-    if (!activeClient || !user) {
+    if (!activeClient || !authUser) {
       return;
     }
     const existing = events;
@@ -772,11 +799,11 @@ export default function HomePage() {
         }
       };
     });
-    await createEventDoc(activeClient.id, cloned, user.uid);
+    await createEventDoc(activeClient.id, cloned, authUser.uid);
   };
 
   const duplicatePaid = async (paidId: string) => {
-    if (!activeClient || !user) {
+    if (!activeClient || !authUser) {
       return;
     }
     const existing = paid;
@@ -804,14 +831,14 @@ export default function HomePage() {
         }
       };
     });
-    await createPaidDoc(activeClient.id, cloned, user.uid);
+    await createPaidDoc(activeClient.id, cloned, authUser.uid);
   };
 
-  if (authLoading || loadingProfile) {
+  if (loading) {
     return <div className="p-10 text-sm text-ink/60">Cargando...</div>;
   }
 
-  if (!user) {
+  if (!authUser) {
     return (
       <div className="min-h-screen px-6 pb-10 pt-6">
         <div className="mx-auto flex max-w-xl flex-col gap-6 rounded-2xl bg-white/70 p-8 text-center shadow-soft">
@@ -843,7 +870,7 @@ export default function HomePage() {
         <div className="mx-auto flex max-w-4xl flex-col gap-6">
           <Header
             onOpenSettings={() => setSettingsOpen(true)}
-            user={user}
+            user={authUser}
             clients={data.clients}
             activeClientId={data.activeClientId}
             isAdmin={isAdmin}
@@ -868,7 +895,7 @@ export default function HomePage() {
       <div className="mx-auto flex max-w-7xl flex-col gap-6">
         <Header
           onOpenSettings={() => setSettingsOpen(true)}
-          user={user}
+          user={authUser}
           clients={data.clients}
           activeClientId={data.activeClientId}
           isAdmin={isAdmin}
@@ -987,7 +1014,7 @@ export default function HomePage() {
             onDuplicatePaid={duplicatePaid}
             enablePaid={activeClient?.enablePaid ?? false}
             unreadById={unreadById}
-            currentUser={userMeta ?? { uid: user.uid }}
+            currentUser={userMeta ?? { uid: authUser.uid }}
           />
         </div>
       </div>

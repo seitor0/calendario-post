@@ -5,8 +5,6 @@ export type PostStatus =
   | "aprobado"
   | "publicada";
 
-export type UserRole = "admin" | "member";
-
 export type UserRoles = {
   admin?: boolean;
   supervisor?: boolean;
@@ -18,7 +16,6 @@ export type UserRoles = {
 
 export type UserProfile = {
   id: string;
-  role?: UserRole;
   roles: UserRoles;
   allowedClients: string[];
   displayName?: string;

@@ -26,7 +26,6 @@ import type {
   Post,
   PostStatus,
   UserProfile,
-  UserRole,
   UserRoles
 } from "./types";
 
@@ -103,7 +102,7 @@ function normalizeStatus(status: string | undefined): PostStatus {
   return "no_iniciado";
 }
 
-function normalizeRoles(value: unknown, fallbackRole?: UserRole): UserRoles {
+function normalizeRoles(value: unknown): UserRoles {
   const rolesRaw = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
   const roles: UserRoles = {};
   Object.entries(rolesRaw).forEach(([key, val]) => {
@@ -111,7 +110,7 @@ function normalizeRoles(value: unknown, fallbackRole?: UserRole): UserRoles {
       roles[key] = val;
     }
   });
-  roles.admin = Boolean(rolesRaw.admin ?? (fallbackRole === "admin"));
+  roles.admin = Boolean(rolesRaw.admin);
   roles.supervisor = Boolean(rolesRaw.supervisor);
   roles.content = Boolean(rolesRaw.content);
   roles.validation = Boolean(rolesRaw.validation);
@@ -230,14 +229,12 @@ export async function ensureUserProfile(user: User): Promise<UserProfile> {
   if (!snap.exists()) {
     const profile: UserProfile = {
       id: user.uid,
-      role: "member",
       roles: {},
       allowedClients: [],
       displayName: user.displayName ?? undefined,
       email: user.email ?? undefined
     };
     await setDoc(ref, {
-      role: "member",
       roles: {},
       allowedClients: profile.allowedClients,
       displayName: profile.displayName ?? null,
@@ -248,11 +245,10 @@ export async function ensureUserProfile(user: User): Promise<UserProfile> {
     return profile;
   }
 
-  const data = snap.data() as Partial<UserProfile> & { role?: UserRole; roles?: UserRoles };
-  const roles = normalizeRoles(data.roles, data.role);
+  const data = snap.data() as Partial<UserProfile> & { roles?: UserRoles };
+  const roles = normalizeRoles(data.roles);
   const profile: UserProfile = {
     id: user.uid,
-    role: data.role === "admin" ? "admin" : "member",
     roles,
     allowedClients: Array.isArray(data.allowedClients) ? data.allowedClients : [],
     displayName: data.displayName ?? user.displayName ?? undefined,
@@ -270,14 +266,6 @@ export async function ensureUserProfile(user: User): Promise<UserProfile> {
 }
 
 export async function fetchClientsForProfile(profile: UserProfile): Promise<Client[]> {
-  if (profile.roles.admin) {
-    const snap = await getDocs(collection(db, "clients"));
-    return snap.docs.map((docSnap) => {
-      const data = docSnap.data() as Client;
-      return normalizeClient({ ...data, id: docSnap.id });
-    });
-  }
-
   const clientPromises = profile.allowedClients.map(async (clientId) => {
     const snap = await getDoc(doc(db, "clients", clientId));
     if (!snap.exists()) {

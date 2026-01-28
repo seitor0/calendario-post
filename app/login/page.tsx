@@ -2,18 +2,18 @@
 
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { useAuthUser } from "@/lib/useAuthUser";
+import { useCurrentUser } from "@/lib/useCurrentUser";
 import { loginWithGoogle } from "@/lib/auth";
 
 export default function LoginPage() {
-  const { user, loading } = useAuthUser();
+  const { authUser, loading } = useCurrentUser();
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && user) {
+    if (!loading && authUser) {
       router.replace("/");
     }
-  }, [loading, user, router]);
+  }, [loading, authUser, router]);
 
   if (loading) {
     return <div className="p-10 text-sm text-ink/60">Cargando...</div>;

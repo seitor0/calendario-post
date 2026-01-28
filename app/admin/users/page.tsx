@@ -3,8 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { collection, doc, getDocs, updateDoc } from "firebase/firestore";
 import { db } from "@/lib/firebase";
-import { useAuthUser } from "@/lib/useAuthUser";
-import { useUserProfile } from "@/lib/useUserProfile";
+import { useCurrentUser } from "@/lib/useCurrentUser";
 import { logout } from "@/lib/auth";
 import type { UserRoles } from "@/lib/types";
 import { useRouter } from "next/navigation";
@@ -25,37 +24,34 @@ type AdminUser = {
 };
 
 export default function AdminUsersPage() {
-  const { user, loading: authLoading } = useAuthUser();
-  const { profile, loadingProfile } = useUserProfile(user?.uid);
+  const { authUser, profile, loading, isAdmin } = useCurrentUser();
   const router = useRouter();
-  const [loading, setLoading] = useState(false);
+  const [loadingData, setLoadingData] = useState(false);
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [clients, setClients] = useState<ClientOption[]>([]);
   const [editing, setEditing] = useState<AdminUser | null>(null);
   const [draftRoles, setDraftRoles] = useState<UserRoles>({});
   const [draftClients, setDraftClients] = useState<string[]>([]);
-  const isAdmin = Boolean(profile?.roles?.admin);
-
   useEffect(() => {
-    if (authLoading || loadingProfile) {
+    if (loading) {
       return;
     }
-    if (!user) {
+    if (!authUser) {
       router.replace("/login");
       return;
     }
-    if (!profile?.roles?.admin) {
+    if (!isAdmin) {
       router.replace("/");
     }
-  }, [authLoading, loadingProfile, user, profile, router]);
+  }, [loading, authUser, isAdmin, router]);
 
   useEffect(() => {
-    if (authLoading || loadingProfile || !user || !isAdmin) {
+    if (loading || !authUser || !isAdmin) {
       return;
     }
     let active = true;
     const load = async () => {
-      setLoading(true);
+      setLoadingData(true);
       const [userSnap, clientSnap] = await Promise.all([
         getDocs(collection(db, "users")),
         getDocs(collection(db, "clients"))
@@ -84,7 +80,7 @@ export default function AdminUsersPage() {
       });
       setClients(clientList);
       setUsers(userList);
-      setLoading(false);
+      setLoadingData(false);
     };
 
     void load();
@@ -92,7 +88,7 @@ export default function AdminUsersPage() {
     return () => {
       active = false;
     };
-  }, [authLoading, loadingProfile, user, isAdmin]);
+  }, [loading, authUser, isAdmin]);
 
   const clientNameById = useMemo(() => {
     return clients.reduce<Record<string, string>>((acc, client) => {
@@ -141,15 +137,11 @@ export default function AdminUsersPage() {
     handleCloseEdit();
   };
 
-  if (authLoading) {
+  if (loading) {
     return <div className="p-10 text-sm text-ink/60">Cargando...</div>;
   }
 
-  if (authLoading || loadingProfile) {
-    return <div className="p-10 text-sm text-ink/60">Cargando...</div>;
-  }
-
-  if (!user || !isAdmin) {
+  if (!authUser || !isAdmin) {
     return <div className="p-10 text-sm text-ink/60">Redirigiendo...</div>;
   }
 
@@ -173,7 +165,7 @@ export default function AdminUsersPage() {
         </header>
 
         <section className="rounded-2xl bg-white/70 p-4 shadow-soft">
-          {loading ? (
+          {loadingData ? (
             <p className="text-sm text-ink/60">Cargando usuarios...</p>
           ) : (
             <div className="overflow-x-auto">

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { doc, onSnapshot } from "firebase/firestore";
 import { db } from "./firebase";
-import type { UserProfile, UserRole, UserRoles } from "./types";
+import type { UserProfile, UserRoles } from "./types";
 
 export const useUserProfile = (uid?: string | null) => {
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -28,17 +28,13 @@ export const useUserProfile = (uid?: string | null) => {
         const data = snapshot.data() as {
           displayName?: string;
           email?: string;
-          role?: string;
           roles?: UserRoles;
           allowedClients?: string[];
         };
-        const role: UserRole | undefined =
-          data.role === "admin" || data.role === "member" ? data.role : undefined;
         setProfile({
           id: snapshot.id,
           displayName: data.displayName ?? undefined,
           email: data.email ?? undefined,
-          role,
           roles: data.roles ?? {},
           allowedClients: Array.isArray(data.allowedClients) ? data.allowedClients : []
         });
