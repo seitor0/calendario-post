@@ -52,12 +52,10 @@ export default function DayCell({
         isCurrentMonth ? "bg-sky" : "bg-skysoft/70 text-ink/40"
       } ${isSelected ? "ring-2 ring-skydeep shadow-soft" : ""}`}
     >
-      {hasUpdates ? (
-        <span className="absolute right-2 top-2 h-2 w-2 rounded-full bg-red-500" />
-      ) : null}
-      <span className="ml-auto text-xs font-semibold text-ink/50 group-hover:text-ink">
-        {date.getDate()}
-      </span>
+      <div className="flex items-center justify-end gap-1 text-xs font-semibold text-ink/50 group-hover:text-ink">
+        {hasUpdates ? <span className="h-2 w-2 rounded-full bg-red-500" /> : null}
+        <span>{date.getDate()}</span>
+      </div>
       <div className="mt-2 flex flex-1 flex-col gap-1">
         {visibleItems.map((item) => (
           <span

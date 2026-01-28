@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import type { User } from "firebase/auth";
+import { collection, doc, limit, query } from "firebase/firestore";
 import CalendarMonth from "@/components/CalendarMonth";
 import AddItemModal, {
   AddEventPayload,
@@ -38,9 +41,11 @@ import {
   fetchClientsForProfile
 } from "@/lib/storage";
 import { isDateInRange, toISODate } from "@/lib/date";
-import type { AppData, ApprovalUser, Client, EventItem, PaidItem, Post } from "@/lib/types";
+import type { AppData, ApprovalUser, Client, EventItem, PaidItem, Post, UserProfile } from "@/lib/types";
 import { useCurrentUser } from "@/lib/useCurrentUser";
 import { loginWithGoogle, logout } from "@/lib/auth";
+import { db } from "@/lib/firebase";
+import { logAuthState, safeGetDoc, safeGetDocs } from "@/lib/debugFirestore";
 
 const EMPTY_MAP: Record<string, boolean> = {};
 
@@ -49,12 +54,174 @@ type SelectedItem = {
   id: string;
 } | null;
 
+type DebugResult = { ok: boolean; message: string };
+
+type DebugPanelProps = {
+  enabled: boolean;
+  authUser: User | null;
+  profile: UserProfile | null;
+  activeClientId: string;
+  monthKey: string;
+  selectedDate: string;
+};
+
+const formatDebugError = (error: unknown) => {
+  if (error && typeof error === "object") {
+    const err = error as { code?: string; message?: string };
+    const code = err.code ? String(err.code) : "unknown";
+    const message = err.message ? String(err.message) : "Unknown error";
+    return `${code}: ${message}`;
+  }
+  return String(error);
+};
+
+function DebugPanel({
+  enabled,
+  authUser,
+  profile,
+  activeClientId,
+  monthKey,
+  selectedDate
+}: DebugPanelProps) {
+  const [profileStatus, setProfileStatus] = useState<"idle" | "loading" | "ok" | "missing" | "error">("idle");
+  const [profileData, setProfileData] = useState<Record<string, unknown> | null>(null);
+  const [testResults, setTestResults] = useState<Record<string, DebugResult>>({});
+  const [testing, setTesting] = useState(false);
+
+  useEffect(() => {
+    if (!enabled || !authUser) {
+      setProfileStatus("idle");
+      setProfileData(null);
+      return;
+    }
+    let active = true;
+    setProfileStatus("loading");
+    void safeGetDoc(doc(db, "users", authUser.uid), `users/${authUser.uid}`)
+      .then((snap) => {
+        if (!active) {
+          return;
+        }
+        if (!snap.exists()) {
+          setProfileStatus("missing");
+          setProfileData(null);
+          return;
+        }
+        setProfileStatus("ok");
+        setProfileData(snap.data() as Record<string, unknown>);
+      })
+      .catch((error) => {
+        if (!active) {
+          return;
+        }
+        setProfileStatus("error");
+        setProfileData({ error: formatDebugError(error) });
+      });
+    return () => {
+      active = false;
+    };
+  }, [enabled, authUser?.uid]);
+
+  if (!enabled) {
+    return null;
+  }
+
+  const runPermissionTests = async () => {
+    if (!authUser || !activeClientId) {
+      setTestResults({
+        guard: {
+          ok: false,
+          message: "Missing authUser or activeClientId"
+        }
+      });
+      return;
+    }
+
+    setTesting(true);
+    const results: Record<string, DebugResult> = {};
+
+    try {
+      await safeGetDoc(doc(db, "clients", activeClientId), `clients/${activeClientId}`);
+      results.clientDoc = { ok: true, message: "OK" };
+    } catch (error) {
+      results.clientDoc = { ok: false, message: formatDebugError(error) };
+    }
+
+    try {
+      await safeGetDocs(
+        query(collection(db, "clients", activeClientId, "posts"), limit(1)),
+        `clients/${activeClientId}/posts?limit=1`
+      );
+      results.posts = { ok: true, message: "OK" };
+    } catch (error) {
+      results.posts = { ok: false, message: formatDebugError(error) };
+    }
+
+    try {
+      await safeGetDocs(
+        query(collection(db, "clients", activeClientId, "events"), limit(1)),
+        `clients/${activeClientId}/events?limit=1`
+      );
+      results.events = { ok: true, message: "OK" };
+    } catch (error) {
+      results.events = { ok: false, message: formatDebugError(error) };
+    }
+
+    setTestResults(results);
+    setTesting(false);
+  };
+
+  return (
+    <div className="rounded-2xl bg-white/70 p-4 text-xs text-ink/80 shadow-soft">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="text-sm font-semibold">Debug Panel</div>
+        <div className="text-[10px] uppercase tracking-wide text-ink/50">debug</div>
+      </div>
+      <div className="mt-3 grid gap-2">
+        <div><span className="font-semibold">Auth:</span> {authUser ? `${authUser.uid} (${authUser.email ?? "no-email"})` : "none"}</div>
+        <div><span className="font-semibold">activeClientId:</span> {activeClientId || "(empty)"}</div>
+        <div><span className="font-semibold">monthKey:</span> {monthKey}</div>
+        <div><span className="font-semibold">selectedDate:</span> {selectedDate}</div>
+        <div><span className="font-semibold">profile.roles:</span> {profile ? JSON.stringify(profile.roles ?? {}) : "null"}</div>
+        <div><span className="font-semibold">profile.allowedClients:</span> {profile ? JSON.stringify(profile.allowedClients ?? []) : "null"}</div>
+        <div><span className="font-semibold">/users/{authUser?.uid}:</span> {profileStatus}</div>
+        {profileData ? (
+          <pre className="whitespace-pre-wrap rounded-lg bg-ink/5 p-2 text-[11px] text-ink/70">
+            {JSON.stringify(profileData, null, 2)}
+          </pre>
+        ) : null}
+      </div>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={runPermissionTests}
+          disabled={testing}
+          className="rounded-full border border-ink/20 px-3 py-1 text-xs font-semibold text-ink transition hover:-translate-y-0.5 hover:shadow-soft disabled:opacity-60"
+        >
+          {testing ? "Testing..." : "Test permissions"}
+        </button>
+        {Object.keys(testResults).length > 0 ? (
+          <div className="text-[11px] text-ink/60">Results:</div>
+        ) : null}
+        {Object.entries(testResults).map(([key, result]) => (
+          <div key={key} className="text-[11px]">
+            <span className={result.ok ? "text-emerald-600" : "text-rose-600"}>
+              {key}: {result.ok ? "OK" : "ERROR"}
+            </span>
+            {!result.ok ? ` (${result.message})` : ""}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function stripTimestampPatch<T extends { updatedAt?: string; createdAt?: string }>(patch: T) {
   const { updatedAt, createdAt, ...rest } = patch;
   return rest;
 }
 
 export default function HomePage() {
+  const searchParams = useSearchParams();
   const { authUser, profile, loading, isAdmin } = useCurrentUser();
   const [data, setData] = useState<AppData | null>(null);
   const [viewDate, setViewDate] = useState(() => new Date());
@@ -74,6 +241,8 @@ export default function HomePage() {
         ...(authUser.email ? { email: authUser.email } : {})
       }
     : null;
+  const debugEnabled =
+    searchParams.get("debug") === "1" || process.env.NEXT_PUBLIC_DEBUG === "true";
 
   useEffect(() => {
     if (loading) {
@@ -132,6 +301,19 @@ export default function HomePage() {
     () => getMonthKey(toISODate(new Date(viewDate.getFullYear(), viewDate.getMonth(), 1))),
     [viewDate]
   );
+
+  useEffect(() => {
+    if (!debugEnabled) {
+      return;
+    }
+    logAuthState("calendar");
+    console.groupCollapsed("[Debug] calendar context");
+    console.log("activeClientId", data?.activeClientId ?? "");
+    console.log("monthKey", monthKey);
+    console.log("selectedDate", selectedDate);
+    console.log("allowedClients", profile?.allowedClients ?? []);
+    console.groupEnd();
+  }, [debugEnabled, data?.activeClientId, monthKey, selectedDate, allowedClientsKey, profile]);
 
   useEffect(() => {
     if (!authUser || !profile || !data?.activeClientId) {
@@ -834,8 +1016,24 @@ export default function HomePage() {
     await createPaidDoc(activeClient.id, cloned, authUser.uid);
   };
 
+  const debugPanel = (
+    <DebugPanel
+      enabled={debugEnabled}
+      authUser={authUser}
+      profile={profile}
+      activeClientId={data?.activeClientId ?? ""}
+      monthKey={monthKey}
+      selectedDate={selectedDate}
+    />
+  );
+
   if (loading) {
-    return <div className="p-10 text-sm text-ink/60">Cargando...</div>;
+    return (
+      <div className="p-10 text-sm text-ink/60">
+        Cargando...
+        {debugPanel}
+      </div>
+    );
   }
 
   if (!authUser) {
@@ -856,12 +1054,18 @@ export default function HomePage() {
             Entrar con Google
           </button>
         </div>
+        {debugPanel}
       </div>
     );
   }
 
   if (!data) {
-    return <div className="p-10 text-sm text-ink/60">Cargando datos...</div>;
+    return (
+      <div className="p-10 text-sm text-ink/60">
+        Cargando datos...
+        {debugPanel}
+      </div>
+    );
   }
 
   if (!data.activeClientId || !activeClient) {
@@ -885,6 +1089,7 @@ export default function HomePage() {
               ? "Crea un cliente para comenzar."
               : "Seleccioná un cliente asignado para comenzar."}
           </div>
+          {debugPanel}
         </div>
       </div>
     );
@@ -1016,13 +1221,16 @@ export default function HomePage() {
             unreadById={unreadById}
             currentUser={userMeta ?? { uid: authUser.uid }}
           />
+          {debugPanel}
         </div>
       </div>
 
       <AddItemModal
         isOpen={addModalOpen}
         defaultDate={selectedDate}
-        initialTab={activeClient?.enablePaid ? addModalTab : "post"}
+        initialTab={
+          addModalTab === "paid" && !activeClient?.enablePaid ? "post" : addModalTab
+        }
         channels={activeClient?.channels ?? []}
         paidChannels={activeClient?.paidChannels ?? []}
         axes={activeClient?.axes ?? []}

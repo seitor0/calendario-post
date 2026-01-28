@@ -26,13 +26,16 @@ export default function Header({
   onLogout
 }: HeaderProps) {
   const [newClientName, setNewClientName] = useState("");
+  const activeClient = clients.find((client) => client.id === activeClientId) ?? null;
   const displayName = user.displayName || user.email || "";
-  const initials = displayName
+  const avatarLabel = activeClient?.name || displayName || "Usuario";
+  const initials = avatarLabel
     .split(" ")
     .filter(Boolean)
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase())
     .join("");
+  const avatarSrc = activeClient?.logoDataUrl || user.photoURL || "";
 
   const handleCreateClient = (event: FormEvent) => {
     event.preventDefault();
@@ -65,11 +68,11 @@ export default function Header({
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-3 rounded-full border border-ink/10 bg-white px-3 py-2 text-sm font-semibold text-ink shadow-sm">
           <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-skysoft text-xs font-semibold text-ink">
-            {user.photoURL ? (
+            {avatarSrc ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
-                src={user.photoURL}
-                alt={displayName || "Usuario"}
+                src={avatarSrc}
+                alt={avatarLabel}
                 className="h-full w-full object-cover"
               />
             ) : (

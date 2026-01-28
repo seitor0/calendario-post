@@ -14,6 +14,7 @@ import {
   where
 } from "firebase/firestore";
 import { db } from "./firebase";
+import { safeGetDoc, safeGetDocs } from "./debugFirestore";
 import type {
   AppData,
   ApprovalBlock,
@@ -267,7 +268,7 @@ export async function ensureUserProfile(user: User): Promise<UserProfile> {
 
 export async function fetchClientsForProfile(profile: UserProfile): Promise<Client[]> {
   const clientPromises = profile.allowedClients.map(async (clientId) => {
-    const snap = await getDoc(doc(db, "clients", clientId));
+    const snap = await safeGetDoc(doc(db, "clients", clientId), `clients/${clientId}`);
     if (!snap.exists()) {
       return null;
     }
@@ -339,14 +340,17 @@ function normalizeChat(messages: unknown) {
 }
 
 export async function loadClientMonthData(clientId: string, monthKey: string) {
-  const postsSnap = await getDocs(
-    query(collection(db, "clients", clientId, "posts"), where("monthKey", "==", monthKey))
+  const postsSnap = await safeGetDocs(
+    query(collection(db, "clients", clientId, "posts"), where("monthKey", "==", monthKey)),
+    `clients/${clientId}/posts?monthKey=${monthKey}`
   );
-  const eventsSnap = await getDocs(
-    query(collection(db, "clients", clientId, "events"), where("monthKey", "==", monthKey))
+  const eventsSnap = await safeGetDocs(
+    query(collection(db, "clients", clientId, "events"), where("monthKey", "==", monthKey)),
+    `clients/${clientId}/events?monthKey=${monthKey}`
   );
-  const paidSnap = await getDocs(
-    query(collection(db, "clients", clientId, "paids"), where("monthKey", "==", monthKey))
+  const paidSnap = await safeGetDocs(
+    query(collection(db, "clients", clientId, "paids"), where("monthKey", "==", monthKey)),
+    `clients/${clientId}/paids?monthKey=${monthKey}`
   );
 
   const posts = postsSnap.docs.map((snap) => {
@@ -426,12 +430,13 @@ export async function loadClientMonthData(clientId: string, monthKey: string) {
 }
 
 export async function loadThreadReads(uid: string, clientId: string, monthKey: string) {
-  const snap = await getDocs(
+  const snap = await safeGetDocs(
     query(
       collection(db, "users", uid, "reads"),
       where("clientId", "==", clientId),
       where("monthKey", "==", monthKey)
-    )
+    ),
+    `users/${uid}/reads?clientId=${clientId}&monthKey=${monthKey}`
   );
   const map: Record<string, string> = {};
   snap.forEach((docSnap) => {
@@ -445,8 +450,9 @@ export async function loadThreadReads(uid: string, clientId: string, monthKey: s
 }
 
 export async function loadDaySeen(uid: string, monthKey: string) {
-  const snap = await getDocs(
-    query(collection(db, "users", uid, "daySeen"), where("monthKey", "==", monthKey))
+  const snap = await safeGetDocs(
+    query(collection(db, "users", uid, "daySeen"), where("monthKey", "==", monthKey)),
+    `users/${uid}/daySeen?monthKey=${monthKey}`
   );
   const map: Record<string, string> = {};
   snap.forEach((docSnap) => {
