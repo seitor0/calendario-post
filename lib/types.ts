@@ -7,9 +7,19 @@ export type PostStatus =
 
 export type UserRole = "admin" | "member";
 
+export type UserRoles = {
+  admin?: boolean;
+  supervisor?: boolean;
+  content?: boolean;
+  validation?: boolean;
+  design?: boolean;
+  [key: string]: boolean | undefined;
+};
+
 export type UserProfile = {
   id: string;
-  role: UserRole;
+  role?: UserRole;
+  roles: UserRoles;
   allowedClients: string[];
   displayName?: string;
   email?: string;

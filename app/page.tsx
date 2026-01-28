@@ -35,12 +35,12 @@ import {
   updateItemDoc,
   appendItemMessage,
   DATA_VERSION,
-  fetchClientsForProfile,
-  ensureUserProfile
+  fetchClientsForProfile
 } from "@/lib/storage";
 import { isDateInRange, toISODate } from "@/lib/date";
-import type { AppData, ApprovalUser, Client, EventItem, PaidItem, Post, UserProfile } from "@/lib/types";
+import type { AppData, ApprovalUser, Client, EventItem, PaidItem, Post } from "@/lib/types";
 import { useAuthUser } from "@/lib/useAuthUser";
+import { useUserProfile } from "@/lib/useUserProfile";
 import { loginWithGoogle, logout } from "@/lib/auth";
 
 const EMPTY_MAP: Record<string, boolean> = {};
@@ -57,8 +57,8 @@ function stripTimestampPatch<T extends { updatedAt?: string; createdAt?: string 
 
 export default function HomePage() {
   const { user, loading: authLoading } = useAuthUser();
+  const { profile, loadingProfile } = useUserProfile(user?.uid);
   const [data, setData] = useState<AppData | null>(null);
-  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [viewDate, setViewDate] = useState(() => new Date());
   const [selectedDate, setSelectedDate] = useState(() => toISODate(new Date()));
   const [selectedItem, setSelectedItem] = useState<SelectedItem>(null);
@@ -76,14 +76,18 @@ export default function HomePage() {
         ...(user.email ? { email: user.email } : {})
       }
     : null;
+  const isAdmin = Boolean(profile?.roles?.admin);
 
   useEffect(() => {
-    if (authLoading) {
+    if (authLoading || loadingProfile) {
       return;
     }
     if (!user) {
       setData(null);
-      setUserProfile(null);
+      return;
+    }
+    if (!profile) {
+      setData(null);
       return;
     }
 
@@ -93,7 +97,6 @@ export default function HomePage() {
         clearLegacyLocalData();
         clearedLegacyRef.current = true;
       }
-      const profile = await ensureUserProfile(user);
       const clients = await fetchClientsForProfile(profile);
       if (!isActive) {
         return;
@@ -103,7 +106,6 @@ export default function HomePage() {
       const nextActive =
         preferred && allowedIds.includes(preferred) ? preferred : allowedIds[0] ?? "";
 
-      setUserProfile(profile);
       setData({
         version: DATA_VERSION,
         activeClientId: nextActive,
@@ -119,7 +121,7 @@ export default function HomePage() {
     return () => {
       isActive = false;
     };
-  }, [authLoading, user]);
+  }, [authLoading, loadingProfile, user, profile]);
 
   const activeClient = data?.clients.find((client) => client.id === data.activeClientId) ?? null;
   const posts = activeClient ? data?.postsByClient[activeClient.id] ?? [] : [];
@@ -338,7 +340,7 @@ export default function HomePage() {
   };
 
   const handleCreateClient = async (name: string, enablePaid = false) => {
-    if (!user || !userProfile || userProfile.role !== "admin") {
+    if (!user || !profile || !isAdmin) {
       return;
     }
     const newClient = await createClient(name, user, enablePaid);
@@ -367,7 +369,7 @@ export default function HomePage() {
         )
       };
     });
-    if (userProfile?.role === "admin") {
+    if (isAdmin) {
       await updateClient(clientId, patch);
     }
   };
@@ -805,7 +807,7 @@ export default function HomePage() {
     await createPaidDoc(activeClient.id, cloned, user.uid);
   };
 
-  if (authLoading) {
+  if (authLoading || loadingProfile) {
     return <div className="p-10 text-sm text-ink/60">Cargando...</div>;
   }
 
@@ -844,7 +846,7 @@ export default function HomePage() {
             user={user}
             clients={data.clients}
             activeClientId={data.activeClientId}
-            isAdmin={userProfile?.role === "admin"}
+            isAdmin={isAdmin}
             onSelectClient={handleSelectClient}
             onCreateClient={handleCreateClient}
             onLogout={() => {
@@ -852,7 +854,7 @@ export default function HomePage() {
             }}
           />
           <div className="rounded-2xl bg-white/70 p-6 text-center text-sm text-ink/60 shadow-soft">
-            {userProfile?.role === "admin"
+            {isAdmin
               ? "Crea un cliente para comenzar."
               : "Seleccioná un cliente asignado para comenzar."}
           </div>
@@ -869,7 +871,7 @@ export default function HomePage() {
           user={user}
           clients={data.clients}
           activeClientId={data.activeClientId}
-          isAdmin={userProfile?.role === "admin"}
+          isAdmin={isAdmin}
           onSelectClient={handleSelectClient}
           onCreateClient={handleCreateClient}
           onLogout={() => {
@@ -1017,7 +1019,7 @@ export default function HomePage() {
         onSelectClient={handleSelectClient}
         onUpdateClient={handleUpdateClient}
         onCreateClient={handleCreateClient}
-        isAdmin={userProfile?.role === "admin"}
+        isAdmin={isAdmin}
       />
     </div>
   );

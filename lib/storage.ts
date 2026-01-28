@@ -7,7 +7,6 @@ import {
   getDoc,
   getDocs,
   query,
-  limit,
   serverTimestamp,
   setDoc,
   Timestamp,
@@ -27,7 +26,8 @@ import type {
   Post,
   PostStatus,
   UserProfile,
-  UserRole
+  UserRole,
+  UserRoles
 } from "./types";
 
 export const STORAGE_KEY = "calpost:v1";
@@ -101,6 +101,22 @@ function normalizeStatus(status: string | undefined): PostStatus {
     return status as PostStatus;
   }
   return "no_iniciado";
+}
+
+function normalizeRoles(value: unknown, fallbackRole?: UserRole): UserRoles {
+  const rolesRaw = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const roles: UserRoles = {};
+  Object.entries(rolesRaw).forEach(([key, val]) => {
+    if (typeof val === "boolean") {
+      roles[key] = val;
+    }
+  });
+  roles.admin = Boolean(rolesRaw.admin ?? (fallbackRole === "admin"));
+  roles.supervisor = Boolean(rolesRaw.supervisor);
+  roles.content = Boolean(rolesRaw.content);
+  roles.validation = Boolean(rolesRaw.validation);
+  roles.design = Boolean(rolesRaw.design);
+  return roles;
 }
 
 function asIso(value?: Timestamp | string | null) {
@@ -212,43 +228,49 @@ export async function ensureUserProfile(user: User): Promise<UserProfile> {
   const ref = doc(db, "users", user.uid);
   const snap = await getDoc(ref);
   if (!snap.exists()) {
-    const existingUsers = await getDocs(query(collection(db, "users"), limit(1)));
-    const role: UserRole = existingUsers.empty ? "admin" : "member";
     const profile: UserProfile = {
       id: user.uid,
-      role,
+      role: "member",
+      roles: {},
       allowedClients: [],
       displayName: user.displayName ?? undefined,
       email: user.email ?? undefined
     };
     await setDoc(ref, {
-      role,
+      role: "member",
+      roles: {},
       allowedClients: profile.allowedClients,
       displayName: profile.displayName ?? null,
-      email: profile.email ?? null
+      email: profile.email ?? null,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp()
     });
     return profile;
   }
 
-  const data = snap.data() as Partial<UserProfile> & { role?: UserRole };
+  const data = snap.data() as Partial<UserProfile> & { role?: UserRole; roles?: UserRoles };
+  const roles = normalizeRoles(data.roles, data.role);
   const profile: UserProfile = {
     id: user.uid,
     role: data.role === "admin" ? "admin" : "member",
+    roles,
     allowedClients: Array.isArray(data.allowedClients) ? data.allowedClients : [],
     displayName: data.displayName ?? user.displayName ?? undefined,
     email: data.email ?? user.email ?? undefined
   };
 
-  await updateDoc(ref, {
+  const needsRoleBackfill = !data.roles;
+  await updateDoc(ref, stripUndefined({
     displayName: profile.displayName ?? null,
-    email: profile.email ?? null
-  });
+    email: profile.email ?? null,
+    roles: needsRoleBackfill ? roles : undefined
+  }));
 
   return profile;
 }
 
 export async function fetchClientsForProfile(profile: UserProfile): Promise<Client[]> {
-  if (profile.role === "admin") {
+  if (profile.roles.admin) {
     const snap = await getDocs(collection(db, "clients"));
     return snap.docs.map((docSnap) => {
       const data = docSnap.data() as Client;
