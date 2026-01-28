@@ -2,7 +2,7 @@
 
 import ChatBox from "@/components/ChatBox";
 import { useEffect, useState } from "react";
-import type { Axis, ChatAuthor, EventItem, PostStatus } from "@/lib/types";
+import type { ApprovalUser, Axis, EventItem, PostStatus } from "@/lib/types";
 
 type EventEditorProps = {
   event: EventItem | null;
@@ -11,7 +11,8 @@ type EventEditorProps = {
   onUpdate: (eventId: string, patch: Partial<EventItem>) => void;
   onDelete: (eventId: string) => void;
   onDuplicate: (eventId: string) => void;
-  onAddMessage: (eventId: string, text: string, author: ChatAuthor) => void;
+  onAddMessage: (eventId: string, text: string) => void;
+  currentUser: ApprovalUser;
 };
 
 const statusOptions: { value: PostStatus; label: string }[] = [
@@ -37,7 +38,8 @@ export default function EventEditor({
   onUpdate,
   onDelete,
   onDuplicate,
-  onAddMessage
+  onAddMessage,
+  currentUser
 }: EventEditorProps) {
   const [hasChanges, setHasChanges] = useState(false);
 
@@ -91,7 +93,8 @@ export default function EventEditor({
         <div className="mt-2 h-64">
           <ChatBox
             messages={event.chat}
-            onAdd={(text, author) => onAddMessage(event.id, text, author)}
+            currentUser={currentUser}
+            onAdd={(text) => onAddMessage(event.id, text)}
           />
         </div>
       </div>

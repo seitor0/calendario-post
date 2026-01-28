@@ -39,7 +39,7 @@ import {
   ensureUserProfile
 } from "@/lib/storage";
 import { isDateInRange, toISODate } from "@/lib/date";
-import type { AppData, Client, EventItem, PaidItem, Post, UserProfile } from "@/lib/types";
+import type { AppData, ApprovalUser, Client, EventItem, PaidItem, Post, UserProfile } from "@/lib/types";
 import { useAuthUser } from "@/lib/useAuthUser";
 import { loginWithGoogle, logout } from "@/lib/auth";
 
@@ -69,6 +69,13 @@ export default function HomePage() {
   const [daySeen, setDaySeen] = useState<Record<string, string>>({});
   const [loadingData, setLoadingData] = useState(false);
   const clearedLegacyRef = useRef(false);
+  const userMeta: ApprovalUser | null = user
+    ? {
+        uid: user.uid,
+        ...(user.displayName ? { name: user.displayName } : {}),
+        ...(user.email ? { email: user.email } : {})
+      }
+    : null;
 
   useEffect(() => {
     if (authLoading) {
@@ -366,7 +373,7 @@ export default function HomePage() {
   };
 
   const handleAddPost = async (payload: AddPostPayload) => {
-    if (!activeClient || !user) {
+    if (!activeClient || !user || !userMeta) {
       return;
     }
     const newPost = addPost(activeClient.id, payload.date);
@@ -389,7 +396,7 @@ export default function HomePage() {
         }
       };
     });
-    await createPostDoc(activeClient.id, newPost, user.uid);
+    await createPostDoc(activeClient.id, newPost, userMeta);
     setSelectedDate(payload.date);
     setViewDate(new Date(`${payload.date}T00:00:00`));
     setAddModalOpen(false);
@@ -461,7 +468,11 @@ export default function HomePage() {
     setAddModalOpen(false);
   };
 
-  const updatePost = async (postId: string, patch: Partial<Post>) => {
+  const updatePost = async (
+    postId: string,
+    patch: Partial<Post>,
+    firestorePatch?: Record<string, any>
+  ) => {
     if (!activeClient || !user) {
       return;
     }
@@ -482,7 +493,7 @@ export default function HomePage() {
       activeClient.id,
       "posts",
       postId,
-      stripTimestampPatch(patch)
+      firestorePatch ?? stripTimestampPatch(patch)
     );
   };
 
@@ -537,14 +548,17 @@ export default function HomePage() {
         }
       };
     });
-    await createPostDoc(activeClient.id, cloned, user.uid);
-  };
-
-  const addMessage = async (postId: string, text: string, author: "Cliente" | "Agencia") => {
-    if (!activeClient || !user) {
+    if (!userMeta) {
       return;
     }
-    const message = addChatMessage(text, author);
+    await createPostDoc(activeClient.id, cloned, userMeta);
+  };
+
+  const addMessage = async (postId: string, text: string) => {
+    if (!activeClient || !user || !userMeta) {
+      return;
+    }
+    const message = addChatMessage(text, userMeta);
     const target = posts.find((post) => post.id === postId);
     const threadMonthKey = target ? getMonthKey(target.date) : monthKey;
     setData((prev) => {
@@ -571,11 +585,11 @@ export default function HomePage() {
     setReadsById((prev) => ({ ...prev, [postId]: message.createdAt }));
   };
 
-  const addEventMessage = async (eventId: string, text: string, author: "Cliente" | "Agencia") => {
-    if (!activeClient || !user) {
+  const addEventMessage = async (eventId: string, text: string) => {
+    if (!activeClient || !user || !userMeta) {
       return;
     }
-    const message = addChatMessage(text, author);
+    const message = addChatMessage(text, userMeta);
     const target = events.find((event) => event.id === eventId);
     const threadMonthKey = target ? getMonthKey(target.date) : monthKey;
     setData((prev) => {
@@ -602,11 +616,11 @@ export default function HomePage() {
     setReadsById((prev) => ({ ...prev, [eventId]: message.createdAt }));
   };
 
-  const addPaidMessage = async (paidId: string, text: string, author: "Cliente" | "Agencia") => {
-    if (!activeClient || !user) {
+  const addPaidMessage = async (paidId: string, text: string) => {
+    if (!activeClient || !user || !userMeta) {
       return;
     }
-    const message = addChatMessage(text, author);
+    const message = addChatMessage(text, userMeta);
     const target = paid.find((item) => item.id === paidId);
     const threadMonthKey = target ? getMonthKey(target.startDate) : monthKey;
     setData((prev) => {
@@ -971,6 +985,7 @@ export default function HomePage() {
             onDuplicatePaid={duplicatePaid}
             enablePaid={activeClient?.enablePaid ?? false}
             unreadById={unreadById}
+            currentUser={userMeta ?? { uid: user.uid }}
           />
         </div>
       </div>

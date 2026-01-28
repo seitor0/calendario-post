@@ -2,7 +2,7 @@
 
 import ChatBox from "@/components/ChatBox";
 import { useEffect, useState } from "react";
-import type { Axis, ChatAuthor, PaidItem, PostStatus } from "@/lib/types";
+import type { ApprovalUser, Axis, PaidItem, PostStatus } from "@/lib/types";
 
 type PaidEditorProps = {
   item: PaidItem | null;
@@ -11,7 +11,8 @@ type PaidEditorProps = {
   onUpdate: (paidId: string, patch: Partial<PaidItem>) => void;
   onDelete: (paidId: string) => void;
   onDuplicate: (paidId: string) => void;
-  onAddMessage: (paidId: string, text: string, author: ChatAuthor) => void;
+  onAddMessage: (paidId: string, text: string) => void;
+  currentUser: ApprovalUser;
 };
 
 const statusOptions: { value: PostStatus; label: string }[] = [
@@ -37,7 +38,8 @@ export default function PaidEditor({
   onUpdate,
   onDelete,
   onDuplicate,
-  onAddMessage
+  onAddMessage,
+  currentUser
 }: PaidEditorProps) {
   const [hasChanges, setHasChanges] = useState(false);
 
@@ -107,7 +109,8 @@ export default function PaidEditor({
         <div className="mt-2 h-64">
           <ChatBox
             messages={item.chat}
-            onAdd={(text, author) => onAddMessage(item.id, text, author)}
+            currentUser={currentUser}
+            onAdd={(text) => onAddMessage(item.id, text)}
           />
         </div>
       </div>

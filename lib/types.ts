@@ -19,15 +19,42 @@ export type ChatAuthor = "Cliente" | "Agencia";
 
 export type ChatMessage = {
   id: string;
-  author: ChatAuthor;
   text: string;
   createdAt: string;
+  authorUid?: string;
+  authorName?: string;
+  authorEmail?: string;
+  author?: ChatAuthor | string;
 };
 
 export type Axis = {
   id: string;
   name: string;
   color: string;
+};
+
+export type ApprovalUser = {
+  uid: string;
+  name?: string;
+  email?: string;
+};
+
+export type ApprovalBlock = {
+  text: string;
+  approved: boolean;
+  approvedAt: string | null;
+  approvedBy: ApprovalUser | null;
+  updatedAt: string | null;
+  updatedBy: ApprovalUser | null;
+};
+
+export type LinkApprovalBlock = {
+  url: string;
+  approved: boolean;
+  approvedAt: string | null;
+  approvedBy: ApprovalUser | null;
+  updatedAt: string | null;
+  updatedBy: ApprovalUser | null;
 };
 
 export type Post = {
@@ -38,6 +65,9 @@ export type Post = {
   axis?: string;
   status: PostStatus;
   chat: ChatMessage[];
+  brief?: ApprovalBlock;
+  copyOut?: ApprovalBlock;
+  pieceLink?: LinkApprovalBlock;
   createdAt: string;
   updatedAt: string;
   lastMessageAt?: string | null;

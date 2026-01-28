@@ -1,12 +1,11 @@
 "use client";
 
-import type { Axis, EventItem, Post, PaidItem } from "@/lib/types";
+import type { ApprovalUser, Axis, EventItem, Post, PaidItem } from "@/lib/types";
 import { formatLongDate } from "@/lib/date";
 import PostEditor from "@/components/PostEditor";
 import EventEditor from "@/components/EventEditor";
 import PaidEditor from "@/components/PaidEditor";
 import MonthSnapshotCard from "@/components/MonthSnapshotCard";
-import type { ChatAuthor } from "@/lib/types";
 
 type SelectedItem = {
   type: "post" | "event" | "paid";
@@ -27,12 +26,12 @@ type RightPanelProps = {
   onSelectEvent: (eventId: string) => void;
   onSelectPaid: (paidId: string) => void;
   onOpenAdd: () => void;
-  onUpdatePost: (postId: string, patch: Partial<Post>) => void;
+  onUpdatePost: (postId: string, patch: Partial<Post>, firestorePatch?: Record<string, any>) => void;
   onDeletePost: (postId: string) => void;
   onDuplicatePost: (postId: string) => void;
-  onAddMessage: (postId: string, text: string, author: ChatAuthor) => void;
-  onAddPaidMessage: (paidId: string, text: string, author: ChatAuthor) => void;
-  onAddEventMessage: (eventId: string, text: string, author: ChatAuthor) => void;
+  onAddMessage: (postId: string, text: string) => void;
+  onAddPaidMessage: (paidId: string, text: string) => void;
+  onAddEventMessage: (eventId: string, text: string) => void;
   onUpdateEvent: (eventId: string, patch: Partial<EventItem>) => void;
   onDeleteEvent: (eventId: string) => void;
   onDuplicateEvent: (eventId: string) => void;
@@ -44,6 +43,7 @@ type RightPanelProps = {
   axes: Axis[];
   enablePaid: boolean;
   unreadById: Record<string, boolean>;
+  currentUser: ApprovalUser;
 };
 
 export default function RightPanel({
@@ -76,7 +76,8 @@ export default function RightPanel({
   paidChannels,
   axes,
   enablePaid,
-  unreadById
+  unreadById,
+  currentUser
 }: RightPanelProps) {
   const selectedPost =
     selectedItem?.type === "post"
@@ -223,6 +224,7 @@ export default function RightPanel({
           onDelete={onDeleteEvent}
           onDuplicate={onDuplicateEvent}
           onAddMessage={onAddEventMessage}
+          currentUser={currentUser}
         />
       ) : selectedItem?.type === "paid" ? (
         <PaidEditor
@@ -233,6 +235,7 @@ export default function RightPanel({
           onDelete={onDeletePaid}
           onDuplicate={onDuplicatePaid}
           onAddMessage={onAddPaidMessage}
+          currentUser={currentUser}
         />
       ) : (
         <PostEditor
@@ -243,6 +246,7 @@ export default function RightPanel({
           onDelete={onDeletePost}
           onDuplicate={onDuplicatePost}
           onAddMessage={onAddMessage}
+          currentUser={currentUser}
         />
       )}
     </aside>

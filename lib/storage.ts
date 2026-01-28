@@ -17,9 +17,12 @@ import {
 import { db } from "./firebase";
 import type {
   AppData,
+  ApprovalBlock,
+  ApprovalUser,
   ChatMessage,
   Client,
   EventItem,
+  LinkApprovalBlock,
   PaidItem,
   Post,
   PostStatus,
@@ -108,6 +111,71 @@ function asIso(value?: Timestamp | string | null) {
     return value;
   }
   return value.toDate().toISOString();
+}
+
+function normalizeApprovalUser(value: unknown): ApprovalUser | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+  const user = value as Partial<ApprovalUser>;
+  if (!user.uid) {
+    return null;
+  }
+  return {
+    uid: user.uid,
+    name: user.name,
+    email: user.email
+  };
+}
+
+function normalizeApprovalBlock(value: unknown, fallbackUpdatedAt: string): ApprovalBlock {
+  if (!value || typeof value !== "object") {
+    return {
+      text: "",
+      approved: false,
+      approvedAt: null,
+      approvedBy: null,
+      updatedAt: null,
+      updatedBy: null
+    };
+  }
+  const block = value as ApprovalBlock & {
+    approvedAt?: Timestamp | string | null;
+    updatedAt?: Timestamp | string | null;
+  };
+  return {
+    text: block.text ?? "",
+    approved: block.approved ?? false,
+    approvedAt: asIso(block.approvedAt),
+    approvedBy: normalizeApprovalUser(block.approvedBy),
+    updatedAt: asIso(block.updatedAt) ?? fallbackUpdatedAt,
+    updatedBy: normalizeApprovalUser(block.updatedBy)
+  };
+}
+
+function normalizeLinkBlock(value: unknown, fallbackUpdatedAt: string): LinkApprovalBlock {
+  if (!value || typeof value !== "object") {
+    return {
+      url: "",
+      approved: false,
+      approvedAt: null,
+      approvedBy: null,
+      updatedAt: null,
+      updatedBy: null
+    };
+  }
+  const block = value as LinkApprovalBlock & {
+    approvedAt?: Timestamp | string | null;
+    updatedAt?: Timestamp | string | null;
+  };
+  return {
+    url: block.url ?? "",
+    approved: block.approved ?? false,
+    approvedAt: asIso(block.approvedAt),
+    approvedBy: normalizeApprovalUser(block.approvedBy),
+    updatedAt: asIso(block.updatedAt) ?? fallbackUpdatedAt,
+    updatedBy: normalizeApprovalUser(block.updatedBy)
+  };
 }
 
 function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T> {
@@ -249,9 +317,12 @@ function normalizeChat(messages: unknown) {
       const createdAt = asIso(message.createdAt) ?? nowIso();
       return {
         id: message.id ?? makeId(),
-        author: message.author ?? "Agencia",
         text: message.text ?? "",
-        createdAt
+        createdAt,
+        authorUid: message.authorUid ?? undefined,
+        authorName: message.authorName ?? undefined,
+        authorEmail: message.authorEmail ?? undefined,
+        author: message.author ?? undefined
       } satisfies ChatMessage;
     })
     .filter(Boolean) as ChatMessage[];
@@ -282,6 +353,9 @@ export async function loadClientMonthData(clientId: string, monthKey: string) {
       channels: data.channels ?? [],
       axis: data.axis ?? undefined,
       status: normalizeStatus(data.status),
+      brief: normalizeApprovalBlock((data as Post).brief, createdAt),
+      copyOut: normalizeApprovalBlock((data as Post).copyOut, createdAt),
+      pieceLink: normalizeLinkBlock((data as Post).pieceLink, createdAt),
       chat: normalizeChat(data.chat),
       createdAt,
       updatedAt: asIso(data.updatedAt) ?? createdAt,
@@ -415,6 +489,30 @@ export function addPost(clientId: string, date: string): Post {
     channels: [],
     status: "no_iniciado",
     chat: [],
+    brief: {
+      text: "",
+      approved: false,
+      approvedAt: null,
+      approvedBy: null,
+      updatedAt: null,
+      updatedBy: null
+    },
+    copyOut: {
+      text: "",
+      approved: false,
+      approvedAt: null,
+      approvedBy: null,
+      updatedAt: null,
+      updatedBy: null
+    },
+    pieceLink: {
+      url: "",
+      approved: false,
+      approvedAt: null,
+      approvedBy: null,
+      updatedAt: null,
+      updatedBy: null
+    },
     createdAt,
     updatedAt: createdAt,
     lastMessageAt: null
@@ -459,17 +557,24 @@ export function addPaid(clientId: string, startDate: string, endDate?: string): 
   };
 }
 
-export function addChatMessage(text: string, author: ChatMessage["author"]): ChatMessage {
+export function addChatMessage(text: string, author: ApprovalUser): ChatMessage {
   return {
     id: makeId(),
-    author,
     text,
-    createdAt: nowIso()
+    createdAt: nowIso(),
+    authorUid: author.uid,
+    authorName: author.name,
+    authorEmail: author.email
   };
 }
 
-export async function createPostDoc(clientId: string, post: Post, userId: string) {
+export async function createPostDoc(clientId: string, post: Post, userMeta: ApprovalUser) {
   const ref = doc(db, "clients", clientId, "posts", post.id);
+  const authorMeta = stripUndefined({
+    uid: userMeta.uid,
+    name: userMeta.name,
+    email: userMeta.email
+  });
   await setDoc(ref, {
     date: post.date,
     monthKey: getMonthKey(post.date),
@@ -479,9 +584,33 @@ export async function createPostDoc(clientId: string, post: Post, userId: string
     status: post.status,
     chat: post.chat,
     lastMessageAt: null,
+    brief: {
+      text: post.brief?.text ?? "",
+      approved: post.brief?.approved ?? false,
+      approvedAt: null,
+      approvedBy: null,
+      updatedAt: serverTimestamp(),
+      updatedBy: authorMeta
+    },
+    copyOut: {
+      text: post.copyOut?.text ?? "",
+      approved: post.copyOut?.approved ?? false,
+      approvedAt: null,
+      approvedBy: null,
+      updatedAt: serverTimestamp(),
+      updatedBy: authorMeta
+    },
+    pieceLink: {
+      url: post.pieceLink?.url ?? "",
+      approved: post.pieceLink?.approved ?? false,
+      approvedAt: null,
+      approvedBy: null,
+      updatedAt: serverTimestamp(),
+      updatedBy: authorMeta
+    },
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
-    createdBy: userId
+    createdBy: userMeta.uid
   });
 }
 
@@ -528,7 +657,7 @@ export async function updateItemDoc(
   clientId: string,
   collectionName: "posts" | "events" | "paids",
   itemId: string,
-  patch: Partial<Post> | Partial<EventItem> | Partial<PaidItem>
+  patch: Record<string, any>
 ) {
   const updateData: Record<string, any> = {
     ...stripUndefined(patch),
@@ -558,8 +687,16 @@ export async function appendItemMessage(
   message: ChatMessage,
   userId: string
 ) {
+  const firestoreMessage = stripUndefined({
+    id: message.id,
+    text: message.text,
+    createdAt: serverTimestamp(),
+    authorUid: message.authorUid,
+    authorName: message.authorName,
+    authorEmail: message.authorEmail
+  });
   await updateDoc(doc(db, "clients", clientId, collectionName, itemId), {
-    chat: arrayUnion(message),
+    chat: arrayUnion(firestoreMessage),
     lastMessageAt: serverTimestamp(),
     updatedAt: serverTimestamp()
   });

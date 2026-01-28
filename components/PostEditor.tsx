@@ -2,16 +2,25 @@
 
 import ChatBox from "@/components/ChatBox";
 import { useEffect, useState } from "react";
-import type { Axis, ChatAuthor, Post, PostStatus } from "@/lib/types";
+import { serverTimestamp } from "firebase/firestore";
+import type {
+  ApprovalBlock,
+  ApprovalUser,
+  Axis,
+  LinkApprovalBlock,
+  Post,
+  PostStatus
+} from "@/lib/types";
 
 type PostEditorProps = {
   post: Post | null;
   channels: string[];
   axes: Axis[];
-  onUpdate: (postId: string, patch: Partial<Post>) => void;
+  onUpdate: (postId: string, patch: Partial<Post>, firestorePatch?: Record<string, any>) => void;
   onDelete: (postId: string) => void;
   onDuplicate: (postId: string) => void;
-  onAddMessage: (postId: string, text: string, author: ChatAuthor) => void;
+  onAddMessage: (postId: string, text: string) => void;
+  currentUser: ApprovalUser;
 };
 
 const statusOptions: { value: PostStatus; label: string }[] = [
@@ -37,7 +46,8 @@ export default function PostEditor({
   onUpdate,
   onDelete,
   onDuplicate,
-  onAddMessage
+  onAddMessage,
+  currentUser
 }: PostEditorProps) {
   const [hasChanges, setHasChanges] = useState(false);
 
@@ -51,6 +61,31 @@ export default function PostEditor({
       </div>
     );
   }
+
+  const authorMeta: ApprovalUser = {
+    uid: currentUser.uid,
+    ...(currentUser.name ? { name: currentUser.name } : {}),
+    ...(currentUser.email ? { email: currentUser.email } : {})
+  };
+  const emptyTextBlock: ApprovalBlock = {
+    text: "",
+    approved: false,
+    approvedAt: null,
+    approvedBy: null,
+    updatedAt: null,
+    updatedBy: null
+  };
+  const emptyLinkBlock: LinkApprovalBlock = {
+    url: "",
+    approved: false,
+    approvedAt: null,
+    approvedBy: null,
+    updatedAt: null,
+    updatedBy: null
+  };
+  const brief = post.brief ?? emptyTextBlock;
+  const copyOut = post.copyOut ?? emptyTextBlock;
+  const pieceLink = post.pieceLink ?? emptyLinkBlock;
 
   const toggleChannel = (channel: string) => {
     const next = post.channels.includes(channel)
@@ -76,11 +111,173 @@ export default function PostEditor({
       </div>
 
       <div className="rounded-xl bg-white/70 p-4 shadow-soft">
+        <label className="text-xs font-medium text-ink/60">Brief Pieza</label>
+        <textarea
+          value={brief.text}
+          onChange={(event) => {
+            const value = event.target.value;
+            const now = new Date().toISOString();
+            const nextBrief = { ...brief, text: value, updatedAt: now, updatedBy: authorMeta };
+            onUpdate(post.id, { brief: nextBrief }, {
+              "brief.text": value,
+              "brief.updatedAt": serverTimestamp(),
+              "brief.updatedBy": authorMeta
+            });
+            setHasChanges(true);
+          }}
+          rows={3}
+          placeholder="Escribí el brief..."
+          className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-skydeep focus:outline-none"
+        />
+        <div className="mt-3 flex items-center gap-3">
+          <label className="inline-flex cursor-pointer items-center gap-2">
+            <input
+              type="checkbox"
+              checked={brief.approved}
+              onChange={(event) => {
+                const checked = event.target.checked;
+                const now = new Date().toISOString();
+                const nextBrief = {
+                  ...brief,
+                  approved: checked,
+                  approvedAt: checked ? now : null,
+                  approvedBy: checked ? authorMeta : null,
+                  updatedAt: now,
+                  updatedBy: authorMeta
+                };
+                onUpdate(post.id, { brief: nextBrief }, {
+                  "brief.approved": checked,
+                  "brief.approvedAt": checked ? serverTimestamp() : null,
+                  "brief.approvedBy": checked ? authorMeta : null,
+                  "brief.updatedAt": serverTimestamp(),
+                  "brief.updatedBy": authorMeta
+                });
+                setHasChanges(true);
+              }}
+              className="peer sr-only"
+            />
+            <span className="relative h-5 w-10 rounded-full bg-slate-200 transition peer-checked:bg-emerald-500">
+              <span className="absolute left-1 top-1 h-3 w-3 rounded-full bg-white transition peer-checked:translate-x-5" />
+            </span>
+            <span className="text-xs font-medium text-ink/70">Aprobado</span>
+          </label>
+        </div>
+      </div>
+
+      <div className="rounded-xl bg-white/70 p-4 shadow-soft">
+        <label className="text-xs font-medium text-ink/60">Copy Out</label>
+        <textarea
+          value={copyOut.text}
+          onChange={(event) => {
+            const value = event.target.value;
+            const now = new Date().toISOString();
+            const nextCopy = { ...copyOut, text: value, updatedAt: now, updatedBy: authorMeta };
+            onUpdate(post.id, { copyOut: nextCopy }, {
+              "copyOut.text": value,
+              "copyOut.updatedAt": serverTimestamp(),
+              "copyOut.updatedBy": authorMeta
+            });
+            setHasChanges(true);
+          }}
+          rows={3}
+          placeholder="Escribí el copy final..."
+          className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-skydeep focus:outline-none"
+        />
+        <div className="mt-3 flex items-center gap-3">
+          <label className="inline-flex cursor-pointer items-center gap-2">
+            <input
+              type="checkbox"
+              checked={copyOut.approved}
+              onChange={(event) => {
+                const checked = event.target.checked;
+                const now = new Date().toISOString();
+                const nextCopy = {
+                  ...copyOut,
+                  approved: checked,
+                  approvedAt: checked ? now : null,
+                  approvedBy: checked ? authorMeta : null,
+                  updatedAt: now,
+                  updatedBy: authorMeta
+                };
+                onUpdate(post.id, { copyOut: nextCopy }, {
+                  "copyOut.approved": checked,
+                  "copyOut.approvedAt": checked ? serverTimestamp() : null,
+                  "copyOut.approvedBy": checked ? authorMeta : null,
+                  "copyOut.updatedAt": serverTimestamp(),
+                  "copyOut.updatedBy": authorMeta
+                });
+                setHasChanges(true);
+              }}
+              className="peer sr-only"
+            />
+            <span className="relative h-5 w-10 rounded-full bg-slate-200 transition peer-checked:bg-emerald-500">
+              <span className="absolute left-1 top-1 h-3 w-3 rounded-full bg-white transition peer-checked:translate-x-5" />
+            </span>
+            <span className="text-xs font-medium text-ink/70">Aprobado</span>
+          </label>
+        </div>
+      </div>
+
+      <div className="rounded-xl bg-white/70 p-4 shadow-soft">
+        <label className="text-xs font-medium text-ink/60">Link de pieza</label>
+        <input
+          value={pieceLink.url}
+          onChange={(event) => {
+            const value = event.target.value;
+            const now = new Date().toISOString();
+            const nextLink = { ...pieceLink, url: value, updatedAt: now, updatedBy: authorMeta };
+            onUpdate(post.id, { pieceLink: nextLink }, {
+              "pieceLink.url": value,
+              "pieceLink.updatedAt": serverTimestamp(),
+              "pieceLink.updatedBy": authorMeta
+            });
+            setHasChanges(true);
+          }}
+          placeholder="Pegá el link final..."
+          className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-skydeep focus:outline-none"
+        />
+        <div className="mt-3 flex items-center gap-3">
+          <label className="inline-flex cursor-pointer items-center gap-2">
+            <input
+              type="checkbox"
+              checked={pieceLink.approved}
+              onChange={(event) => {
+                const checked = event.target.checked;
+                const now = new Date().toISOString();
+                const nextLink = {
+                  ...pieceLink,
+                  approved: checked,
+                  approvedAt: checked ? now : null,
+                  approvedBy: checked ? authorMeta : null,
+                  updatedAt: now,
+                  updatedBy: authorMeta
+                };
+                onUpdate(post.id, { pieceLink: nextLink }, {
+                  "pieceLink.approved": checked,
+                  "pieceLink.approvedAt": checked ? serverTimestamp() : null,
+                  "pieceLink.approvedBy": checked ? authorMeta : null,
+                  "pieceLink.updatedAt": serverTimestamp(),
+                  "pieceLink.updatedBy": authorMeta
+                });
+                setHasChanges(true);
+              }}
+              className="peer sr-only"
+            />
+            <span className="relative h-5 w-10 rounded-full bg-slate-200 transition peer-checked:bg-emerald-500">
+              <span className="absolute left-1 top-1 h-3 w-3 rounded-full bg-white transition peer-checked:translate-x-5" />
+            </span>
+            <span className="text-xs font-medium text-ink/70">Aprobado</span>
+          </label>
+        </div>
+      </div>
+
+      <div className="rounded-xl bg-white/70 p-4 shadow-soft">
         <label className="text-xs font-medium text-ink/60">Chat / comentarios</label>
         <div className="mt-2 h-64">
           <ChatBox
             messages={post.chat}
-            onAdd={(text, author) => onAddMessage(post.id, text, author)}
+            currentUser={currentUser}
+            onAdd={(text) => onAddMessage(post.id, text)}
           />
         </div>
       </div>
