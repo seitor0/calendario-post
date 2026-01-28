@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import type { User } from "firebase/auth";
 import { collection, doc, limit, query } from "firebase/firestore";
 import CalendarMonth from "@/components/CalendarMonth";
@@ -221,7 +220,6 @@ function stripTimestampPatch<T extends { updatedAt?: string; createdAt?: string 
 }
 
 export default function HomePage() {
-  const searchParams = useSearchParams();
   const { authUser, profile, loading, isAdmin } = useCurrentUser();
   const [data, setData] = useState<AppData | null>(null);
   const [viewDate, setViewDate] = useState(() => new Date());
@@ -241,8 +239,18 @@ export default function HomePage() {
         ...(authUser.email ? { email: authUser.email } : {})
       }
     : null;
-  const debugEnabled =
-    searchParams.get("debug") === "1" || process.env.NEXT_PUBLIC_DEBUG === "true";
+  const [debugEnabled, setDebugEnabled] = useState(
+    () => process.env.NEXT_PUBLIC_DEBUG === "true"
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (window.location.search.includes("debug=1")) {
+      setDebugEnabled(true);
+    }
+  }, []);
 
   useEffect(() => {
     if (loading) {
