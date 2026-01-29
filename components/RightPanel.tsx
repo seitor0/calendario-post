@@ -6,8 +6,6 @@ import PostEditor from "@/components/PostEditor";
 import EventEditor from "@/components/EventEditor";
 import PaidEditor from "@/components/PaidEditor";
 import MonthSnapshotCard from "@/components/MonthSnapshotCard";
-import { useChat } from "@/lib/data/useChat";
-import { buildChatId } from "@/lib/data/helpers";
 
 type SelectedItem = {
   type: "post" | "event" | "paid";
@@ -17,7 +15,6 @@ type SelectedItem = {
 type RightPanelProps = {
   viewDate: Date;
   selectedDate: Date;
-  clientId: string;
   posts: Post[];
   events: EventItem[];
   paid: PaidItem[];
@@ -29,27 +26,25 @@ type RightPanelProps = {
   onSelectEvent: (eventId: string) => void;
   onSelectPaid: (paidId: string) => void;
   onOpenAdd: () => void;
-  onUpdatePost: (postId: string, patch: Partial<Post>) => void;
+  onUpdatePost: (postId: string, patch: Partial<Post>) => Promise<void>;
   onDeletePost: (postId: string) => void;
   onDuplicatePost: (postId: string) => void;
-  onUpdateEvent: (eventId: string, patch: Partial<EventItem>) => void;
+  onUpdateEvent: (eventId: string, patch: Partial<EventItem>) => Promise<void>;
   onDeleteEvent: (eventId: string) => void;
   onDuplicateEvent: (eventId: string) => void;
-  onUpdatePaid: (paidId: string, patch: Partial<PaidItem>) => void;
+  onUpdatePaid: (paidId: string, patch: Partial<PaidItem>) => Promise<void>;
   onDeletePaid: (paidId: string) => void;
   onDuplicatePaid: (paidId: string) => void;
   channels: string[];
   paidChannels: string[];
   axes: Axis[];
   enablePaid: boolean;
-  unreadById: Record<string, boolean>;
   currentUser: ApprovalUser;
 };
 
 export default function RightPanel({
   viewDate,
   selectedDate,
-  clientId,
   posts,
   events,
   paid,
@@ -74,7 +69,6 @@ export default function RightPanel({
   paidChannels,
   axes,
   enablePaid,
-  unreadById,
   currentUser
 }: RightPanelProps) {
   const selectedPost =
@@ -89,21 +83,6 @@ export default function RightPanel({
     selectedItem?.type === "paid"
       ? paid.find((item) => item.id === selectedItem.id) ?? null
       : null;
-
-  const chatId = selectedItem
-    ? buildChatId(`${selectedItem.type}s` as "posts" | "events" | "paids", selectedItem.id)
-    : null;
-  const { data: messages, loading: chatLoading, error: chatError, sendMessage } = useChat(
-    clientId,
-    chatId
-  );
-
-  const handleSendMessage = (text: string) => {
-    if (!selectedItem) {
-      return;
-    }
-    void sendMessage(text, currentUser);
-  };
 
   return (
     <aside className="flex flex-col gap-4">
@@ -135,9 +114,6 @@ export default function RightPanel({
                       >
                         <span className="flex items-center gap-1">
                           {post.title || "Publicacion"}
-                          {unreadById[post.id] ? (
-                            <span className="h-2 w-2 rounded-full bg-red-500" />
-                          ) : null}
                         </span>
                       </button>
                     ))
@@ -164,12 +140,9 @@ export default function RightPanel({
                               : "bg-slate-200 text-ink/70"
                           }`}
                         >
-                          <span className="flex items-center gap-1">
-                            $ {item.title || "Sin titulo"}
-                            {unreadById[item.id] ? (
-                              <span className="h-2 w-2 rounded-full bg-red-500" />
-                            ) : null}
-                          </span>
+                        <span className="flex items-center gap-1">
+                          $ {item.title || "Sin titulo"}
+                        </span>
                         </button>
                       ))
                     )}
@@ -197,9 +170,6 @@ export default function RightPanel({
                       >
                         <span className="flex items-center gap-1">
                           {event.title || "Evento"}
-                          {unreadById[event.id] ? (
-                            <span className="h-2 w-2 rounded-full bg-red-500" />
-                          ) : null}
                         </span>
                       </button>
                     ))
@@ -236,10 +206,6 @@ export default function RightPanel({
           onUpdate={onUpdateEvent}
           onDelete={onDeleteEvent}
           onDuplicate={onDuplicateEvent}
-          onSendMessage={handleSendMessage}
-          messages={messages}
-          chatLoading={chatLoading}
-          chatError={chatError}
           currentUser={currentUser}
         />
       ) : selectedItem?.type === "paid" ? (
@@ -250,10 +216,6 @@ export default function RightPanel({
           onUpdate={onUpdatePaid}
           onDelete={onDeletePaid}
           onDuplicate={onDuplicatePaid}
-          onSendMessage={handleSendMessage}
-          messages={messages}
-          chatLoading={chatLoading}
-          chatError={chatError}
           currentUser={currentUser}
         />
       ) : (
@@ -264,10 +226,6 @@ export default function RightPanel({
           onUpdate={onUpdatePost}
           onDelete={onDeletePost}
           onDuplicate={onDuplicatePost}
-          onSendMessage={handleSendMessage}
-          messages={messages}
-          chatLoading={chatLoading}
-          chatError={chatError}
           currentUser={currentUser}
         />
       )}

@@ -26,7 +26,7 @@ import {
   usePaid,
   usePosts
 } from "@/lib/data";
-import { markDaySeen, markThreadRead, useDaySeen, useThreadReads } from "@/lib/data/useReads";
+import { markDaySeen, useDaySeen } from "@/lib/data/useReads";
 
 const EMPTY_MAP: Record<string, boolean> = {};
 
@@ -108,7 +108,6 @@ export default function HomePage() {
     deletePaid
   } = usePaid(activeClient?.enablePaid ? activeClient.id : null);
 
-  const { data: readsById } = useThreadReads(authUser?.uid ?? null, activeClient?.id ?? null, monthKey);
   const { data: daySeen } = useDaySeen(authUser?.uid ?? null, monthKey);
 
   const loadingData = loadingPosts || loadingEvents || (activeClient?.enablePaid ? loadingPaid : false);
@@ -152,23 +151,6 @@ export default function HomePage() {
     [paid, selectedDate]
   );
 
-  const unreadById = useMemo(() => {
-    const map: Record<string, boolean> = {};
-    const check = (item: Post | EventItem | PaidItem) => {
-      if (!item.lastMessageAt) {
-        return;
-      }
-      const lastRead = readsById[item.id];
-      if (!lastRead || item.lastMessageAt > lastRead) {
-        map[item.id] = true;
-      }
-    };
-    posts.forEach(check);
-    events.forEach(check);
-    paid.forEach(check);
-    return map;
-  }, [posts, events, paid, readsById]);
-
   const dayUpdates = useMemo(() => {
     const map: Record<string, boolean> = {};
     const monthStart = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
@@ -202,24 +184,6 @@ export default function HomePage() {
 
     return map;
   }, [posts, events, paid, daySeen, viewDate]);
-
-  useEffect(() => {
-    if (!authUser || !profile || !activeClient || !selectedItem) {
-      return;
-    }
-    if (!profile.allowedClients.includes(activeClient.id)) {
-      return;
-    }
-    const collection =
-      selectedItem.type === "post" ? posts : selectedItem.type === "event" ? events : paid;
-    const item = collection.find((entry) => entry.id === selectedItem.id);
-    if (!item) {
-      return;
-    }
-    const dateKey = "date" in item ? item.date : item.startDate;
-    const itemMonthKey = getMonthKey(dateKey);
-    void markThreadRead(authUser.uid, activeClient.id, itemMonthKey, item.id, selectedItem.type);
-  }, [authUser, profile, activeClient, selectedItem, posts, events, paid]);
 
   useEffect(() => {
     if (!authUser || !profile || !activeClient) {
@@ -658,7 +622,6 @@ export default function HomePage() {
           <RightPanel
             viewDate={viewDate}
             selectedDate={selectedDateObj}
-            clientId={activeClient.id}
             posts={postsForDay}
             events={eventsForDay}
             paid={paidForDay}
@@ -686,7 +649,6 @@ export default function HomePage() {
             onDeletePaid={handleDeletePaid}
             onDuplicatePaid={duplicatePaid}
             enablePaid={activeClient?.enablePaid ?? false}
-            unreadById={unreadById}
             currentUser={userMeta ?? { uid: authUser.uid }}
           />
         </div>

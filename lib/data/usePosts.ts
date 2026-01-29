@@ -121,6 +121,7 @@ export function usePosts(clientId?: string | null) {
           updatedAt: null,
           updatedBy: null
         },
+        internalComment: "",
         lastMessageAt: null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),

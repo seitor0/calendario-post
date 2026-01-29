@@ -1,20 +1,15 @@
 "use client";
 
-import ChatBox from "@/components/ChatBox";
-import { useEffect, useState } from "react";
-import type { ApprovalUser, Axis, ChatMessage, PaidItem, PostStatus } from "@/lib/types";
+import { useEffect, useRef, useState } from "react";
+import type { ApprovalUser, Axis, PaidItem, PostStatus } from "@/lib/types";
 
 type PaidEditorProps = {
   item: PaidItem | null;
   paidChannels: string[];
   axes: Axis[];
-  onUpdate: (paidId: string, patch: Partial<PaidItem>) => void;
+  onUpdate: (paidId: string, patch: Partial<PaidItem>) => Promise<void>;
   onDelete: (paidId: string) => void;
   onDuplicate: (paidId: string) => void;
-  onSendMessage: (text: string) => void;
-  messages: ChatMessage[];
-  chatLoading: boolean;
-  chatError: Error | null;
   currentUser: ApprovalUser;
 };
 
@@ -41,16 +36,17 @@ export default function PaidEditor({
   onUpdate,
   onDelete,
   onDuplicate,
-  onSendMessage,
-  messages,
-  chatLoading,
-  chatError,
   currentUser
 }: PaidEditorProps) {
   const [hasChanges, setHasChanges] = useState(false);
+  const [commentDraft, setCommentDraft] = useState(item?.internalComment ?? "");
+  const [commentStatus, setCommentStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setHasChanges(false);
+    setCommentDraft(item?.internalComment ?? "");
+    setCommentStatus("idle");
   }, [item?.id]);
   if (!item) {
     return (
@@ -67,6 +63,33 @@ export default function PaidEditor({
     onUpdate(item.id, { paidChannels: next });
     setHasChanges(true);
   };
+
+  useEffect(() => {
+    if (!item) {
+      return undefined;
+    }
+    if (commentDraft === (item.internalComment ?? "")) {
+      return undefined;
+    }
+    setCommentStatus("saving");
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+    debounceRef.current = setTimeout(() => {
+      onUpdate(item.id, { internalComment: commentDraft })
+        .then(() => {
+          setCommentStatus("saved");
+        })
+        .catch(() => {
+          setCommentStatus("error");
+        });
+    }, 500);
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, [commentDraft, item, onUpdate]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -111,20 +134,23 @@ export default function PaidEditor({
       </div>
 
       <div className="rounded-xl bg-white/70 p-4 shadow-soft">
-        <label className="text-xs font-medium text-ink/60">Chat / comentarios</label>
-        <div className="mt-2 h-64">
-          <ChatBox
-            messages={messages}
-            currentUser={currentUser}
-            onAdd={(text) => onSendMessage(text)}
-          />
-          {chatLoading ? (
-            <p className="mt-2 text-xs text-ink/50">Cargando mensajes...</p>
-          ) : null}
-          {chatError ? (
-            <p className="mt-2 text-xs text-rose-600">Error al cargar chat.</p>
-          ) : null}
-        </div>
+        <label className="text-xs font-medium text-ink/60">Comentario interno</label>
+        <textarea
+          value={commentDraft}
+          onChange={(event) => setCommentDraft(event.target.value)}
+          rows={4}
+          placeholder="Escribi un comentario interno..."
+          className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+        />
+        <p className="mt-2 text-xs text-ink/60">
+          {commentStatus === "saving"
+            ? "Guardando..."
+            : commentStatus === "saved"
+              ? "Guardado"
+              : commentStatus === "error"
+                ? "Error al guardar"
+                : ""}
+        </p>
       </div>
 
       <div className="rounded-xl bg-white/70 p-4 shadow-soft">

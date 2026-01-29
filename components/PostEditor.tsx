@@ -1,12 +1,10 @@
 "use client";
 
-import ChatBox from "@/components/ChatBox";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type {
   ApprovalBlock,
   ApprovalUser,
   Axis,
-  ChatMessage,
   LinkApprovalBlock,
   Post,
   PostStatus
@@ -16,13 +14,9 @@ type PostEditorProps = {
   post: Post | null;
   channels: string[];
   axes: Axis[];
-  onUpdate: (postId: string, patch: Partial<Post>) => void;
+  onUpdate: (postId: string, patch: Partial<Post>) => Promise<void>;
   onDelete: (postId: string) => void;
   onDuplicate: (postId: string) => void;
-  onSendMessage: (text: string) => void;
-  messages: ChatMessage[];
-  chatLoading: boolean;
-  chatError: Error | null;
   currentUser: ApprovalUser;
 };
 
@@ -49,16 +43,17 @@ export default function PostEditor({
   onUpdate,
   onDelete,
   onDuplicate,
-  onSendMessage,
-  messages,
-  chatLoading,
-  chatError,
   currentUser
 }: PostEditorProps) {
   const [hasChanges, setHasChanges] = useState(false);
+  const [commentDraft, setCommentDraft] = useState(post?.internalComment ?? "");
+  const [commentStatus, setCommentStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setHasChanges(false);
+    setCommentDraft(post?.internalComment ?? "");
+    setCommentStatus("idle");
   }, [post?.id]);
   if (!post) {
     return (
@@ -100,6 +95,33 @@ export default function PostEditor({
     onUpdate(post.id, { channels: next });
     setHasChanges(true);
   };
+
+  useEffect(() => {
+    if (!post) {
+      return undefined;
+    }
+    if (commentDraft === (post.internalComment ?? "")) {
+      return undefined;
+    }
+    setCommentStatus("saving");
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+    debounceRef.current = setTimeout(() => {
+      onUpdate(post.id, { internalComment: commentDraft })
+        .then(() => {
+          setCommentStatus("saved");
+        })
+        .catch(() => {
+          setCommentStatus("error");
+        });
+    }, 500);
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, [commentDraft, post, onUpdate]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -248,20 +270,23 @@ export default function PostEditor({
       </div>
 
       <div className="rounded-xl bg-white/70 p-4 shadow-soft">
-        <label className="text-xs font-medium text-ink/60">Chat / comentarios</label>
-        <div className="mt-2 h-64">
-          <ChatBox
-            messages={messages}
-            currentUser={currentUser}
-            onAdd={(text) => onSendMessage(text)}
-          />
-          {chatLoading ? (
-            <p className="mt-2 text-xs text-ink/50">Cargando mensajes...</p>
-          ) : null}
-          {chatError ? (
-            <p className="mt-2 text-xs text-rose-600">Error al cargar chat.</p>
-          ) : null}
-        </div>
+        <label className="text-xs font-medium text-ink/60">Comentario interno</label>
+        <textarea
+          value={commentDraft}
+          onChange={(event) => setCommentDraft(event.target.value)}
+          rows={4}
+          placeholder="Escribi un comentario interno..."
+          className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:border-skydeep focus:outline-none"
+        />
+        <p className="mt-2 text-xs text-ink/60">
+          {commentStatus === "saving"
+            ? "Guardando..."
+            : commentStatus === "saved"
+              ? "Guardado"
+              : commentStatus === "error"
+                ? "Error al guardar"
+                : ""}
+        </p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">

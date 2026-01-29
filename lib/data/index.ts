@@ -2,7 +2,6 @@ export * from "@/lib/data/firestoreRefs";
 export * from "@/lib/data/usePosts";
 export * from "@/lib/data/useEvents";
 export * from "@/lib/data/usePaid";
-export * from "@/lib/data/useChat";
 export * from "@/lib/data/useClients";
 export * from "@/lib/data/useAdminUsers";
 export * from "@/lib/data/useReads";

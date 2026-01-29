@@ -22,17 +22,7 @@ export type UserProfile = {
   email?: string;
 };
 
-export type ChatAuthor = "Cliente" | "Agencia";
-
-export type ChatMessage = {
-  id: string;
-  text: string;
-  createdAt: string;
-  uid?: string;
-  displayName?: string;
-  email?: string;
-  author?: ChatAuthor | string;
-};
+// Chat types removed from UI (chat disabled). Keep placeholder if needed later.
 
 export type Axis = {
   id: string;
@@ -71,6 +61,7 @@ export type Post = {
   channels: string[];
   axis?: string;
   status: PostStatus;
+  internalComment?: string;
   brief?: ApprovalBlock;
   copyOut?: ApprovalBlock;
   pieceLink?: LinkApprovalBlock;
@@ -90,6 +81,7 @@ export type EventItem = {
   channels: string[];
   axis?: string;
   status: PostStatus;
+  internalComment?: string;
   createdAt: string;
   updatedAt: string;
   createdBy?: string;
@@ -105,6 +97,7 @@ export type PaidItem = {
   title: string;
   status: PostStatus;
   axis?: string;
+  internalComment?: string;
   createdAt: string;
   updatedAt: string;
   createdBy?: string;

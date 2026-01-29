@@ -16,10 +16,14 @@ export function useClients(allowedClientIds: string[]) {
   const [error, setError] = useState<Error | null>(null);
   const clientMapRef = useRef<Record<string, Client>>({});
 
-  const idsKey = useMemo(() => allowedClientIds.join("|"), [allowedClientIds]);
+  const idsKey = useMemo(
+    () => Array.from(new Set(allowedClientIds)).sort().join("|"),
+    [allowedClientIds]
+  );
+  const stableIds = useMemo(() => (idsKey ? idsKey.split("|") : []), [idsKey]);
 
   useEffect(() => {
-    if (!allowedClientIds.length) {
+    if (!stableIds.length) {
       setClients([]);
       setLoading(false);
       setError(null);
@@ -29,10 +33,10 @@ export function useClients(allowedClientIds: string[]) {
 
     setLoading(true);
     if (isDev) {
-      console.debug("[useClients] subscribe", allowedClientIds);
+      console.debug("[useClients] subscribe", stableIds);
     }
 
-    const unsubscribes = allowedClientIds.map((clientId) =>
+    const unsubscribes = stableIds.map((clientId) =>
       onSnapshot(
         doc(db, "clients", clientId),
         (snapshot) => {
@@ -41,7 +45,7 @@ export function useClients(allowedClientIds: string[]) {
           } else {
             clientMapRef.current[clientId] = normalizeClient(snapshot.id, snapshot.data());
           }
-          setClients(allowedClientIds
+          setClients(stableIds
             .map((id) => clientMapRef.current[id])
             .filter(Boolean));
           setLoading(false);
@@ -58,11 +62,11 @@ export function useClients(allowedClientIds: string[]) {
 
     return () => {
       if (isDev) {
-        console.debug("[useClients] unsubscribe", allowedClientIds);
+        console.debug("[useClients] unsubscribe", stableIds);
       }
       unsubscribes.forEach((unsub) => unsub());
     };
-  }, [idsKey, allowedClientIds]);
+  }, [idsKey, stableIds]);
 
   return { clients, loading, error };
 }

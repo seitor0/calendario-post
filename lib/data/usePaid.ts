@@ -100,6 +100,7 @@ export function usePaid(clientId?: string | null) {
         status: input.status ?? "no_iniciado",
         axis: input.axis ?? null,
         lastMessageAt: null,
+        internalComment: "",
         paidChannels: input.paidChannels ?? [],
         paidContent: input.paidContent ?? "",
         investmentAmount: input.investmentAmount ?? 0,

@@ -14,18 +14,9 @@ export const eventsCollection = (clientId: string) =>
 export const paidsCollection = (clientId: string) =>
   collection(db, "clients", clientId, "paids");
 
-export const chatsCollection = (clientId: string) =>
-  collection(db, "clients", clientId, "chats");
-export const chatDoc = (clientId: string, chatId: string) =>
-  doc(db, "clients", clientId, "chats", chatId);
-export const messagesCollection = (clientId: string, chatId: string) =>
-  collection(db, "clients", clientId, "chats", chatId, "messages");
-
 export const postsQuery = (clientId: string) =>
   query(postsCollection(clientId), orderBy("date", "asc"));
 export const eventsQuery = (clientId: string) =>
   query(eventsCollection(clientId), orderBy("date", "asc"));
 export const paidsQuery = (clientId: string) =>
   query(paidsCollection(clientId), orderBy("startDate", "asc"));
-export const messagesQuery = (clientId: string, chatId: string) =>
-  query(messagesCollection(clientId, chatId), orderBy("createdAt", "asc"), limit(300));

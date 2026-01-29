@@ -2,7 +2,6 @@ import { Timestamp } from "firebase/firestore";
 import type {
   ApprovalBlock,
   ApprovalUser,
-  ChatMessage,
   Client,
   EventItem,
   LinkApprovalBlock,
@@ -128,6 +127,7 @@ export function normalizePost(docId: string, data: Partial<Post> & {
     channels: data.channels ?? [],
     axis: data.axis ?? undefined,
     status: normalizeStatus(data.status),
+    internalComment: data.internalComment ?? "",
     brief: normalizeApprovalBlock(data.brief, createdAt),
     copyOut: normalizeApprovalBlock(data.copyOut, createdAt),
     pieceLink: normalizeLinkBlock(data.pieceLink, createdAt),
@@ -153,6 +153,7 @@ export function normalizeEvent(docId: string, data: Partial<EventItem> & {
     channels: data.channels ?? [],
     axis: data.axis ?? undefined,
     status: normalizeStatus(data.status),
+    internalComment: data.internalComment ?? "",
     createdAt,
     updatedAt: asIso(data.updatedAt) ?? createdAt,
     createdBy: data.createdBy,
@@ -176,6 +177,7 @@ export function normalizePaid(docId: string, data: Partial<PaidItem> & {
     title: data.title ?? "",
     status: normalizeStatus(data.status),
     axis: data.axis ?? undefined,
+    internalComment: data.internalComment ?? "",
     createdAt,
     updatedAt: asIso(data.updatedAt) ?? createdAt,
     createdBy: data.createdBy,
@@ -188,26 +190,7 @@ export function normalizePaid(docId: string, data: Partial<PaidItem> & {
   };
 }
 
-export function normalizeChatMessage(
-  docId: string,
-  data: Partial<ChatMessage> & {
-    createdAt?: Timestamp | string | null;
-    authorUid?: string;
-    authorName?: string;
-    authorEmail?: string;
-  }
-): ChatMessage {
-  const createdAt = asIso(data.createdAt) ?? nowIso();
-  return {
-    id: docId,
-    text: data.text ?? "",
-    createdAt,
-    uid: data.uid ?? data.authorUid,
-    displayName: data.displayName ?? data.authorName ?? data.author,
-    email: data.email ?? data.authorEmail,
-    author: data.author
-  };
-}
+// Chat normalization removed (chat disabled)
 
 export function normalizeClient(docId: string, data: Partial<Client>): Client {
   const axes = (data.axes ?? []).map((axis, index) => ({

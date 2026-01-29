@@ -18,17 +18,4 @@ export function stripUndefined<T extends Record<string, any>>(obj: T): Partial<T
   return out;
 }
 
-export function buildChatId(threadType: "posts" | "events" | "paids", threadId: string) {
-  return `${threadType}:${threadId}`;
-}
-
-export function parseChatId(chatId: string) {
-  const [threadType, threadId] = chatId.split(":");
-  if (
-    (threadType === "posts" || threadType === "events" || threadType === "paids") &&
-    threadId
-  ) {
-    return { threadType, threadId };
-  }
-  return { threadType: null, threadId: null };
-}
+// chat helpers removed (chat disabled)

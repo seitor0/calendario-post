@@ -96,6 +96,7 @@ export function useEvents(clientId?: string | null) {
         channels: input.channels ?? [],
         axis: input.axis ?? null,
         status: input.status ?? "no_iniciado",
+        internalComment: "",
         lastMessageAt: null,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),

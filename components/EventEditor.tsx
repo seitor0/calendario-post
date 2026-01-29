@@ -1,20 +1,15 @@
 "use client";
 
-import ChatBox from "@/components/ChatBox";
-import { useEffect, useState } from "react";
-import type { ApprovalUser, Axis, ChatMessage, EventItem, PostStatus } from "@/lib/types";
+import { useEffect, useRef, useState } from "react";
+import type { ApprovalUser, Axis, EventItem, PostStatus } from "@/lib/types";
 
 type EventEditorProps = {
   event: EventItem | null;
   channels: string[];
   axes: Axis[];
-  onUpdate: (eventId: string, patch: Partial<EventItem>) => void;
+  onUpdate: (eventId: string, patch: Partial<EventItem>) => Promise<void>;
   onDelete: (eventId: string) => void;
   onDuplicate: (eventId: string) => void;
-  onSendMessage: (text: string) => void;
-  messages: ChatMessage[];
-  chatLoading: boolean;
-  chatError: Error | null;
   currentUser: ApprovalUser;
 };
 
@@ -41,16 +36,17 @@ export default function EventEditor({
   onUpdate,
   onDelete,
   onDuplicate,
-  onSendMessage,
-  messages,
-  chatLoading,
-  chatError,
   currentUser
 }: EventEditorProps) {
   const [hasChanges, setHasChanges] = useState(false);
+  const [commentDraft, setCommentDraft] = useState(event?.internalComment ?? "");
+  const [commentStatus, setCommentStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     setHasChanges(false);
+    setCommentDraft(event?.internalComment ?? "");
+    setCommentStatus("idle");
   }, [event?.id]);
   if (!event) {
     return (
@@ -67,6 +63,33 @@ export default function EventEditor({
     onUpdate(event.id, { channels: next });
     setHasChanges(true);
   };
+
+  useEffect(() => {
+    if (!event) {
+      return undefined;
+    }
+    if (commentDraft === (event.internalComment ?? "")) {
+      return undefined;
+    }
+    setCommentStatus("saving");
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+    debounceRef.current = setTimeout(() => {
+      onUpdate(event.id, { internalComment: commentDraft })
+        .then(() => {
+          setCommentStatus("saved");
+        })
+        .catch(() => {
+          setCommentStatus("error");
+        });
+    }, 500);
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, [commentDraft, event, onUpdate]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -95,20 +118,23 @@ export default function EventEditor({
       </div>
 
       <div className="rounded-xl bg-white/70 p-4 shadow-soft">
-        <label className="text-xs font-medium text-ink/60">Chat / comentarios</label>
-        <div className="mt-2 h-64">
-          <ChatBox
-            messages={messages}
-            currentUser={currentUser}
-            onAdd={(text) => onSendMessage(text)}
-          />
-          {chatLoading ? (
-            <p className="mt-2 text-xs text-ink/50">Cargando mensajes...</p>
-          ) : null}
-          {chatError ? (
-            <p className="mt-2 text-xs text-rose-600">Error al cargar chat.</p>
-          ) : null}
-        </div>
+        <label className="text-xs font-medium text-ink/60">Comentario interno</label>
+        <textarea
+          value={commentDraft}
+          onChange={(eventInput) => setCommentDraft(eventInput.target.value)}
+          rows={4}
+          placeholder="Escribi un comentario interno..."
+          className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"
+        />
+        <p className="mt-2 text-xs text-ink/60">
+          {commentStatus === "saving"
+            ? "Guardando..."
+            : commentStatus === "saved"
+              ? "Guardado"
+              : commentStatus === "error"
+                ? "Error al guardar"
+                : ""}
+        </p>
       </div>
 
       <div className="grid gap-4 md:grid-cols-2">
