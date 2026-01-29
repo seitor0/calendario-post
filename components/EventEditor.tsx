@@ -38,16 +38,66 @@ export default function EventEditor({
   onDuplicate,
   currentUser
 }: EventEditorProps) {
+  const eventId = event?.id ?? "";
+  const selectedChannels = event?.channels ?? [];
+  const initialComment = event?.internalComment ?? "";
   const [hasChanges, setHasChanges] = useState(false);
-  const [commentDraft, setCommentDraft] = useState(event?.internalComment ?? "");
+  const [commentDraft, setCommentDraft] = useState(initialComment);
   const [commentStatus, setCommentStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const safeUpdate = async (patch: Partial<EventItem>) => {
+    if (!eventId) {
+      return false;
+    }
+    try {
+      await onUpdate(eventId, patch);
+      return true;
+    } catch {
+      setCommentStatus("error");
+      return false;
+    }
+  };
+
   useEffect(() => {
     setHasChanges(false);
-    setCommentDraft(event?.internalComment ?? "");
+    setCommentDraft((prev) => (prev === initialComment ? prev : initialComment));
     setCommentStatus("idle");
-  }, [event?.id]);
+  }, [eventId, initialComment]);
+
+  const toggleChannel = (channel: string) => {
+    const next = selectedChannels.includes(channel)
+      ? selectedChannels.filter((item) => item !== channel)
+      : [...selectedChannels, channel];
+    void safeUpdate({ channels: next });
+    setHasChanges(true);
+  };
+
+  useEffect(() => {
+    if (!eventId) {
+      return undefined;
+    }
+    if (commentDraft === initialComment) {
+      return undefined;
+    }
+    setCommentStatus("saving");
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+    debounceRef.current = setTimeout(() => {
+      void safeUpdate({ internalComment: commentDraft }).then((ok) => {
+        if (ok) {
+          setCommentStatus("saved");
+        }
+      });
+    }, 500);
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, [commentDraft, eventId, initialComment, onUpdate]);
+
   if (!event) {
     return (
       <div className="rounded-xl bg-white/70 p-6 text-sm text-ink/60 shadow-soft">
@@ -56,41 +106,6 @@ export default function EventEditor({
     );
   }
 
-  const toggleChannel = (channel: string) => {
-    const next = event.channels.includes(channel)
-      ? event.channels.filter((item) => item !== channel)
-      : [...event.channels, channel];
-    onUpdate(event.id, { channels: next });
-    setHasChanges(true);
-  };
-
-  useEffect(() => {
-    if (!event) {
-      return undefined;
-    }
-    if (commentDraft === (event.internalComment ?? "")) {
-      return undefined;
-    }
-    setCommentStatus("saving");
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
-    debounceRef.current = setTimeout(() => {
-      onUpdate(event.id, { internalComment: commentDraft })
-        .then(() => {
-          setCommentStatus("saved");
-        })
-        .catch(() => {
-          setCommentStatus("error");
-        });
-    }, 500);
-    return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
-    };
-  }, [commentDraft, event, onUpdate]);
-
   return (
     <div className="flex flex-col gap-4">
       <div className="rounded-xl bg-white/70 p-4 shadow-soft">
@@ -98,7 +113,7 @@ export default function EventEditor({
         <input
           value={event.title}
           onChange={(eventInput) => {
-            onUpdate(event.id, { title: eventInput.target.value });
+            void safeUpdate({ title: eventInput.target.value });
             setHasChanges(true);
           }}
           placeholder="Titulo del evento"
@@ -108,7 +123,7 @@ export default function EventEditor({
         <textarea
           value={event.note ?? ""}
           onChange={(eventInput) => {
-            onUpdate(event.id, { note: eventInput.target.value });
+            void safeUpdate({ note: eventInput.target.value });
             setHasChanges(true);
           }}
           rows={3}
@@ -148,7 +163,7 @@ export default function EventEditor({
                 <label
                   key={channel}
                   className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${
-                    event.channels.includes(channel)
+                    selectedChannels.includes(channel)
                       ? "border-skydeep bg-skydeep/10"
                       : "border-ink/10 bg-white"
                   }`}
@@ -156,7 +171,7 @@ export default function EventEditor({
                   <input
                     type="checkbox"
                     className="accent-skydeep"
-                    checked={event.channels.includes(channel)}
+                    checked={selectedChannels.includes(channel)}
                     onChange={() => toggleChannel(channel)}
                   />
                   {channel}
@@ -170,7 +185,7 @@ export default function EventEditor({
           <select
             value={event.axis ?? ""}
             onChange={(eventInput) => {
-              onUpdate(event.id, { axis: eventInput.target.value });
+              void safeUpdate({ axis: eventInput.target.value });
               setHasChanges(true);
             }}
             className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
@@ -193,7 +208,7 @@ export default function EventEditor({
               key={status.value}
               type="button"
               onClick={() => {
-                onUpdate(event.id, { status: status.value });
+                void safeUpdate({ status: status.value });
                 setHasChanges(true);
               }}
               className={`rounded-full px-4 py-1 text-xs font-semibold transition ${
@@ -218,7 +233,7 @@ export default function EventEditor({
               : "bg-slate-300 text-slate-500 cursor-not-allowed"
           }`}
           onClick={() => {
-            onUpdate(event.id, { updatedAt: new Date().toISOString() });
+            void safeUpdate({ updatedAt: new Date().toISOString() });
             setHasChanges(false);
           }}
         >
@@ -226,14 +241,22 @@ export default function EventEditor({
         </button>
         <button
           type="button"
-          onClick={() => onDuplicate(event.id)}
+          onClick={() => {
+            if (eventId) {
+              onDuplicate(eventId);
+            }
+          }}
           className="rounded-full border border-skydeep/30 bg-skydeep/10 px-4 py-2 text-xs font-semibold text-skydeep"
         >
           Duplicar evento
         </button>
         <button
           type="button"
-          onClick={() => onDelete(event.id)}
+          onClick={() => {
+            if (eventId) {
+              onDelete(eventId);
+            }
+          }}
           className="rounded-full border border-danger/30 bg-danger/10 px-4 py-2 text-xs font-semibold text-danger"
         >
           Eliminar evento

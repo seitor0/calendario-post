@@ -3,12 +3,12 @@
 import { addDoc, deleteDoc, doc, onSnapshot, serverTimestamp, updateDoc } from "firebase/firestore";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ApprovalUser, Post, PostStatus, SyncStatus } from "@/lib/types";
-import { postsCollection, postsQuery } from "@/lib/data/firestoreRefs";
-import { deriveSyncStatus } from "@/lib/data/syncStatus";
-import { normalizePost } from "@/lib/data/normalize";
-import { stripUndefined } from "@/lib/data/helpers";
+import { postsCollection, postsQuery } from "./firestoreRefs";
+import { deriveSyncStatus } from "./syncStatus";
+import { normalizePost } from "./normalize";
+import { stripUndefined } from "./helpers";
 import { getMonthKey } from "@/lib/date";
-import { useOnlineStatus } from "@/lib/data/useOnlineStatus";
+import { useOnlineStatus } from "./useOnlineStatus";
 
 export type CreatePostInput = {
   date: string;
@@ -22,6 +22,7 @@ export type CreatePostInput = {
 };
 
 const isDev = process.env.NODE_ENV !== "production";
+let activePostListeners = 0;
 
 export function usePosts(clientId?: string | null) {
   const [data, setData] = useState<Post[]>([]);
@@ -43,6 +44,11 @@ export function usePosts(clientId?: string | null) {
     setLoading(true);
     if (isDev) {
       console.debug("[usePosts] subscribe", clientId);
+    }
+
+    activePostListeners += 1;
+    if (isDev) {
+      console.debug("[usePosts] listener+1", { active: activePostListeners });
     }
 
     const unsubscribe = onSnapshot(
@@ -67,6 +73,10 @@ export function usePosts(clientId?: string | null) {
         console.debug("[usePosts] unsubscribe", clientId);
       }
       unsubscribe();
+      activePostListeners = Math.max(0, activePostListeners - 1);
+      if (isDev) {
+        console.debug("[usePosts] listener-1", { active: activePostListeners });
+      }
     };
   }, [clientId]);
 

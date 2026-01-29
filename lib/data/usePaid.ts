@@ -3,12 +3,12 @@
 import { addDoc, deleteDoc, doc, onSnapshot, serverTimestamp, updateDoc } from "firebase/firestore";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ApprovalUser, PaidItem, PostStatus, SyncStatus } from "@/lib/types";
-import { paidsCollection, paidsQuery } from "@/lib/data/firestoreRefs";
-import { deriveSyncStatus } from "@/lib/data/syncStatus";
-import { normalizePaid } from "@/lib/data/normalize";
-import { stripUndefined } from "@/lib/data/helpers";
+import { paidsCollection, paidsQuery } from "./firestoreRefs";
+import { deriveSyncStatus } from "./syncStatus";
+import { normalizePaid } from "./normalize";
+import { stripUndefined } from "./helpers";
 import { getMonthKey } from "@/lib/date";
-import { useOnlineStatus } from "@/lib/data/useOnlineStatus";
+import { useOnlineStatus } from "./useOnlineStatus";
 
 export type CreatePaidInput = {
   startDate: string;
@@ -23,6 +23,7 @@ export type CreatePaidInput = {
 };
 
 const isDev = process.env.NODE_ENV !== "production";
+let activePaidListeners = 0;
 
 export function usePaid(clientId?: string | null) {
   const [data, setData] = useState<PaidItem[]>([]);
@@ -44,6 +45,11 @@ export function usePaid(clientId?: string | null) {
     setLoading(true);
     if (isDev) {
       console.debug("[usePaid] subscribe", clientId);
+    }
+
+    activePaidListeners += 1;
+    if (isDev) {
+      console.debug("[usePaid] listener+1", { active: activePaidListeners });
     }
 
     const unsubscribe = onSnapshot(
@@ -68,6 +74,10 @@ export function usePaid(clientId?: string | null) {
         console.debug("[usePaid] unsubscribe", clientId);
       }
       unsubscribe();
+      activePaidListeners = Math.max(0, activePaidListeners - 1);
+      if (isDev) {
+        console.debug("[usePaid] listener-1", { active: activePaidListeners });
+      }
     };
   }, [clientId]);
 

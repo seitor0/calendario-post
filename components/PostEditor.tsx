@@ -45,16 +45,58 @@ export default function PostEditor({
   onDuplicate,
   currentUser
 }: PostEditorProps) {
+  const postId = post?.id ?? "";
+  const selectedChannels = post?.channels ?? [];
+  const initialComment = post?.internalComment ?? "";
   const [hasChanges, setHasChanges] = useState(false);
-  const [commentDraft, setCommentDraft] = useState(post?.internalComment ?? "");
+  const [commentDraft, setCommentDraft] = useState(initialComment);
   const [commentStatus, setCommentStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const safeUpdate = async (patch: Partial<Post>) => {
+    if (!postId) {
+      return false;
+    }
+    try {
+      await onUpdate(postId, patch);
+      return true;
+    } catch {
+      setCommentStatus("error");
+      return false;
+    }
+  };
+
   useEffect(() => {
     setHasChanges(false);
-    setCommentDraft(post?.internalComment ?? "");
+    setCommentDraft((prev) => (prev === initialComment ? prev : initialComment));
     setCommentStatus("idle");
-  }, [post?.id]);
+  }, [postId, initialComment]);
+
+  useEffect(() => {
+    if (!postId) {
+      return undefined;
+    }
+    if (commentDraft === initialComment) {
+      return undefined;
+    }
+    setCommentStatus("saving");
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+    debounceRef.current = setTimeout(() => {
+      void safeUpdate({ internalComment: commentDraft }).then((ok) => {
+        if (ok) {
+          setCommentStatus("saved");
+        }
+      });
+    }, 500);
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, [commentDraft, postId, initialComment, onUpdate]);
+
   if (!post) {
     return (
       <div className="rounded-xl bg-white/70 p-6 text-sm text-ink/60 shadow-soft">
@@ -89,39 +131,12 @@ export default function PostEditor({
   const pieceLink = post.pieceLink ?? emptyLinkBlock;
 
   const toggleChannel = (channel: string) => {
-    const next = post.channels.includes(channel)
-      ? post.channels.filter((item) => item !== channel)
-      : [...post.channels, channel];
-    onUpdate(post.id, { channels: next });
+    const next = selectedChannels.includes(channel)
+      ? selectedChannels.filter((item) => item !== channel)
+      : [...selectedChannels, channel];
+    void safeUpdate({ channels: next });
     setHasChanges(true);
   };
-
-  useEffect(() => {
-    if (!post) {
-      return undefined;
-    }
-    if (commentDraft === (post.internalComment ?? "")) {
-      return undefined;
-    }
-    setCommentStatus("saving");
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
-    debounceRef.current = setTimeout(() => {
-      onUpdate(post.id, { internalComment: commentDraft })
-        .then(() => {
-          setCommentStatus("saved");
-        })
-        .catch(() => {
-          setCommentStatus("error");
-        });
-    }, 500);
-    return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
-    };
-  }, [commentDraft, post, onUpdate]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -130,7 +145,7 @@ export default function PostEditor({
         <input
           value={post.title}
           onChange={(event) => {
-            onUpdate(post.id, { title: event.target.value });
+            void safeUpdate({ title: event.target.value });
             setHasChanges(true);
           }}
           placeholder="Espacio para titulo de la publicacion"
@@ -146,7 +161,7 @@ export default function PostEditor({
             const value = event.target.value;
             const now = new Date().toISOString();
             const nextBrief = { ...brief, text: value, updatedAt: now, updatedBy: authorMeta };
-            onUpdate(post.id, { brief: nextBrief });
+            void safeUpdate({ brief: nextBrief });
             setHasChanges(true);
           }}
           rows={3}
@@ -169,7 +184,7 @@ export default function PostEditor({
                   updatedAt: now,
                   updatedBy: authorMeta
                 };
-                onUpdate(post.id, { brief: nextBrief });
+                void safeUpdate({ brief: nextBrief });
                 setHasChanges(true);
               }}
               className="peer sr-only"
@@ -190,7 +205,7 @@ export default function PostEditor({
             const value = event.target.value;
             const now = new Date().toISOString();
             const nextCopy = { ...copyOut, text: value, updatedAt: now, updatedBy: authorMeta };
-            onUpdate(post.id, { copyOut: nextCopy });
+            void safeUpdate({ copyOut: nextCopy });
             setHasChanges(true);
           }}
           rows={3}
@@ -213,7 +228,7 @@ export default function PostEditor({
                   updatedAt: now,
                   updatedBy: authorMeta
                 };
-                onUpdate(post.id, { copyOut: nextCopy });
+                void safeUpdate({ copyOut: nextCopy });
                 setHasChanges(true);
               }}
               className="peer sr-only"
@@ -234,7 +249,7 @@ export default function PostEditor({
             const value = event.target.value;
             const now = new Date().toISOString();
             const nextLink = { ...pieceLink, url: value, updatedAt: now, updatedBy: authorMeta };
-            onUpdate(post.id, { pieceLink: nextLink });
+            void safeUpdate({ pieceLink: nextLink });
             setHasChanges(true);
           }}
           placeholder="Pegá el link final..."
@@ -256,7 +271,7 @@ export default function PostEditor({
                   updatedAt: now,
                   updatedBy: authorMeta
                 };
-                onUpdate(post.id, { pieceLink: nextLink });
+                void safeUpdate({ pieceLink: nextLink });
                 setHasChanges(true);
               }}
               className="peer sr-only"
@@ -300,7 +315,7 @@ export default function PostEditor({
                 <label
                   key={channel}
                   className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${
-                    post.channels.includes(channel)
+                    selectedChannels.includes(channel)
                       ? "border-skydeep bg-skydeep/10"
                       : "border-ink/10 bg-white"
                   }`}
@@ -308,7 +323,7 @@ export default function PostEditor({
                   <input
                     type="checkbox"
                     className="accent-skydeep"
-                    checked={post.channels.includes(channel)}
+                    checked={selectedChannels.includes(channel)}
                     onChange={() => toggleChannel(channel)}
                   />
                   {channel}
@@ -322,7 +337,7 @@ export default function PostEditor({
           <select
             value={post.axis ?? ""}
             onChange={(event) => {
-              onUpdate(post.id, { axis: event.target.value });
+              void safeUpdate({ axis: event.target.value });
               setHasChanges(true);
             }}
             className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
@@ -345,7 +360,7 @@ export default function PostEditor({
               key={status.value}
               type="button"
               onClick={() => {
-                onUpdate(post.id, { status: status.value });
+                void safeUpdate({ status: status.value });
                 setHasChanges(true);
               }}
               className={`rounded-full px-4 py-1 text-xs font-semibold transition ${
@@ -370,7 +385,7 @@ export default function PostEditor({
               : "bg-slate-300 text-slate-500 cursor-not-allowed"
           }`}
           onClick={() => {
-            onUpdate(post.id, { updatedAt: new Date().toISOString() });
+            void safeUpdate({ updatedAt: new Date().toISOString() });
             setHasChanges(false);
           }}
         >
@@ -378,14 +393,22 @@ export default function PostEditor({
         </button>
         <button
           type="button"
-          onClick={() => onDuplicate(post.id)}
+          onClick={() => {
+            if (postId) {
+              onDuplicate(postId);
+            }
+          }}
           className="rounded-full border border-skydeep/30 bg-skydeep/10 px-4 py-2 text-xs font-semibold text-skydeep"
         >
           Duplicar publicacion
         </button>
         <button
           type="button"
-          onClick={() => onDelete(post.id)}
+          onClick={() => {
+            if (postId) {
+              onDelete(postId);
+            }
+          }}
           className="rounded-full border border-danger/30 bg-danger/10 px-4 py-2 text-xs font-semibold text-danger"
         >
           Eliminar publicacion

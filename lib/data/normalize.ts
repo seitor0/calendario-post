@@ -10,7 +10,7 @@ import type {
   PostStatus
 } from "@/lib/types";
 import { toISODate } from "@/lib/date";
-import { AXIS_COLORS, PAID_CHANNEL_DEFAULTS } from "@/lib/data/helpers";
+import { AXIS_COLORS, PAID_CHANNEL_DEFAULTS } from "./helpers";
 
 const VALID_STATUSES: PostStatus[] = [
   "no_iniciado",
@@ -124,8 +124,8 @@ export function normalizePost(docId: string, data: Partial<Post> & {
     id: docId,
     date: asDateKey(data.date),
     title: data.title ?? "",
-    channels: data.channels ?? [],
-    axis: data.axis ?? undefined,
+    channels: Array.isArray(data.channels) ? data.channels : [],
+    axis: data.axis ?? null,
     status: normalizeStatus(data.status),
     internalComment: data.internalComment ?? "",
     brief: normalizeApprovalBlock(data.brief, createdAt),
@@ -150,8 +150,8 @@ export function normalizeEvent(docId: string, data: Partial<EventItem> & {
     date: asDateKey(data.date),
     title: data.title ?? "",
     note: data.note ?? "",
-    channels: data.channels ?? [],
-    axis: data.axis ?? undefined,
+    channels: Array.isArray(data.channels) ? data.channels : [],
+    axis: data.axis ?? null,
     status: normalizeStatus(data.status),
     internalComment: data.internalComment ?? "",
     createdAt,
@@ -176,14 +176,14 @@ export function normalizePaid(docId: string, data: Partial<PaidItem> & {
     endDate,
     title: data.title ?? "",
     status: normalizeStatus(data.status),
-    axis: data.axis ?? undefined,
+    axis: data.axis ?? null,
     internalComment: data.internalComment ?? "",
     createdAt,
     updatedAt: asIso(data.updatedAt) ?? createdAt,
     createdBy: data.createdBy,
     updatedBy: data.updatedBy,
     lastMessageAt: asIso(data.lastMessageAt),
-    paidChannels: data.paidChannels ?? [],
+    paidChannels: Array.isArray(data.paidChannels) ? data.paidChannels : [],
     paidContent: data.paidContent ?? "",
     investmentAmount: data.investmentAmount ?? 0,
     investmentCurrency: data.investmentCurrency ?? "ARS"

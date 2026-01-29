@@ -3,12 +3,12 @@
 import { addDoc, deleteDoc, doc, onSnapshot, serverTimestamp, updateDoc } from "firebase/firestore";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { ApprovalUser, EventItem, PostStatus, SyncStatus } from "@/lib/types";
-import { eventsCollection, eventsQuery } from "@/lib/data/firestoreRefs";
-import { deriveSyncStatus } from "@/lib/data/syncStatus";
-import { normalizeEvent } from "@/lib/data/normalize";
-import { stripUndefined } from "@/lib/data/helpers";
+import { eventsCollection, eventsQuery } from "./firestoreRefs";
+import { deriveSyncStatus } from "./syncStatus";
+import { normalizeEvent } from "./normalize";
+import { stripUndefined } from "./helpers";
 import { getMonthKey } from "@/lib/date";
-import { useOnlineStatus } from "@/lib/data/useOnlineStatus";
+import { useOnlineStatus } from "./useOnlineStatus";
 
 export type CreateEventInput = {
   date: string;
@@ -20,6 +20,7 @@ export type CreateEventInput = {
 };
 
 const isDev = process.env.NODE_ENV !== "production";
+let activeEventListeners = 0;
 
 export function useEvents(clientId?: string | null) {
   const [data, setData] = useState<EventItem[]>([]);
@@ -41,6 +42,11 @@ export function useEvents(clientId?: string | null) {
     setLoading(true);
     if (isDev) {
       console.debug("[useEvents] subscribe", clientId);
+    }
+
+    activeEventListeners += 1;
+    if (isDev) {
+      console.debug("[useEvents] listener+1", { active: activeEventListeners });
     }
 
     const unsubscribe = onSnapshot(
@@ -65,6 +71,10 @@ export function useEvents(clientId?: string | null) {
         console.debug("[useEvents] unsubscribe", clientId);
       }
       unsubscribe();
+      activeEventListeners = Math.max(0, activeEventListeners - 1);
+      if (isDev) {
+        console.debug("[useEvents] listener-1", { active: activeEventListeners });
+      }
     };
   }, [clientId]);
 

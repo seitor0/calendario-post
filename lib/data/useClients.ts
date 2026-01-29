@@ -1,14 +1,33 @@
 "use client";
 
-import { doc, onSnapshot, serverTimestamp, setDoc, updateDoc } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  documentId,
+  onSnapshot,
+  query,
+  serverTimestamp,
+  setDoc,
+  updateDoc,
+  where
+} from "firebase/firestore";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { db } from "@/lib/firebase";
 import type { Client } from "@/lib/types";
-import { normalizeClient } from "@/lib/data/normalize";
-import { AXIS_COLORS, PAID_CHANNEL_DEFAULTS, stripUndefined } from "@/lib/data/helpers";
-import { makeId } from "@/lib/data/ids";
+import { normalizeClient } from "./normalize";
+import { AXIS_COLORS, PAID_CHANNEL_DEFAULTS, stripUndefined } from "./helpers";
+import { makeId } from "./ids";
 
 const isDev = process.env.NODE_ENV !== "production";
+let activeClientListeners = 0;
+
+const chunkIds = (ids: string[], size = 10) => {
+  const batches: string[][] = [];
+  for (let i = 0; i < ids.length; i += size) {
+    batches.push(ids.slice(i, i + size));
+  }
+  return batches;
+};
 
 export function useClients(allowedClientIds: string[]) {
   const [clients, setClients] = useState<Client[]>([]);
@@ -36,15 +55,28 @@ export function useClients(allowedClientIds: string[]) {
       console.debug("[useClients] subscribe", stableIds);
     }
 
-    const unsubscribes = stableIds.map((clientId) =>
-      onSnapshot(
-        doc(db, "clients", clientId),
+    const batches = chunkIds(stableIds, 10);
+    const unsubscribes = batches.map((batch) => {
+      const batchQuery = query(collection(db, "clients"), where(documentId(), "in", batch));
+      activeClientListeners += 1;
+      if (isDev) {
+        console.debug("[useClients] listener+1", { active: activeClientListeners, batch });
+      }
+      return onSnapshot(
+        batchQuery,
         (snapshot) => {
-          if (!snapshot.exists()) {
-            delete clientMapRef.current[clientId];
-          } else {
-            clientMapRef.current[clientId] = normalizeClient(snapshot.id, snapshot.data());
-          }
+          const seen = new Set<string>();
+          snapshot.docs.forEach((docSnap) => {
+            seen.add(docSnap.id);
+            clientMapRef.current[docSnap.id] = normalizeClient(docSnap.id, docSnap.data());
+          });
+
+          batch.forEach((clientId) => {
+            if (!seen.has(clientId)) {
+              delete clientMapRef.current[clientId];
+            }
+          });
+
           setClients(stableIds
             .map((id) => clientMapRef.current[id])
             .filter(Boolean));
@@ -57,14 +89,20 @@ export function useClients(allowedClientIds: string[]) {
           setError(err as Error);
           setLoading(false);
         }
-      )
-    );
+      );
+    });
 
     return () => {
       if (isDev) {
         console.debug("[useClients] unsubscribe", stableIds);
       }
-      unsubscribes.forEach((unsub) => unsub());
+      unsubscribes.forEach((unsub) => {
+        unsub();
+        activeClientListeners = Math.max(0, activeClientListeners - 1);
+        if (isDev) {
+          console.debug("[useClients] listener-1", { active: activeClientListeners });
+        }
+      });
     };
   }, [idsKey, stableIds]);
 

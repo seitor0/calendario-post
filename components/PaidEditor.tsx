@@ -38,16 +38,66 @@ export default function PaidEditor({
   onDuplicate,
   currentUser
 }: PaidEditorProps) {
+  const itemId = item?.id ?? "";
+  const selectedPaidChannels = item?.paidChannels ?? [];
+  const initialComment = item?.internalComment ?? "";
   const [hasChanges, setHasChanges] = useState(false);
-  const [commentDraft, setCommentDraft] = useState(item?.internalComment ?? "");
+  const [commentDraft, setCommentDraft] = useState(initialComment);
   const [commentStatus, setCommentStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const safeUpdate = async (patch: Partial<PaidItem>) => {
+    if (!itemId) {
+      return false;
+    }
+    try {
+      await onUpdate(itemId, patch);
+      return true;
+    } catch {
+      setCommentStatus("error");
+      return false;
+    }
+  };
+
   useEffect(() => {
     setHasChanges(false);
-    setCommentDraft(item?.internalComment ?? "");
+    setCommentDraft((prev) => (prev === initialComment ? prev : initialComment));
     setCommentStatus("idle");
-  }, [item?.id]);
+  }, [itemId, initialComment]);
+
+  const togglePaidChannel = (channel: string) => {
+    const next = selectedPaidChannels.includes(channel)
+      ? selectedPaidChannels.filter((value) => value !== channel)
+      : [...selectedPaidChannels, channel];
+    void safeUpdate({ paidChannels: next });
+    setHasChanges(true);
+  };
+
+  useEffect(() => {
+    if (!itemId) {
+      return undefined;
+    }
+    if (commentDraft === initialComment) {
+      return undefined;
+    }
+    setCommentStatus("saving");
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+    debounceRef.current = setTimeout(() => {
+      void safeUpdate({ internalComment: commentDraft }).then((ok) => {
+        if (ok) {
+          setCommentStatus("saved");
+        }
+      });
+    }, 500);
+    return () => {
+      if (debounceRef.current) {
+        clearTimeout(debounceRef.current);
+      }
+    };
+  }, [commentDraft, itemId, initialComment, onUpdate]);
+
   if (!item) {
     return (
       <div className="rounded-xl bg-white/70 p-6 text-sm text-ink/60 shadow-soft">
@@ -56,41 +106,6 @@ export default function PaidEditor({
     );
   }
 
-  const togglePaidChannel = (channel: string) => {
-    const next = item.paidChannels.includes(channel)
-      ? item.paidChannels.filter((value) => value !== channel)
-      : [...item.paidChannels, channel];
-    onUpdate(item.id, { paidChannels: next });
-    setHasChanges(true);
-  };
-
-  useEffect(() => {
-    if (!item) {
-      return undefined;
-    }
-    if (commentDraft === (item.internalComment ?? "")) {
-      return undefined;
-    }
-    setCommentStatus("saving");
-    if (debounceRef.current) {
-      clearTimeout(debounceRef.current);
-    }
-    debounceRef.current = setTimeout(() => {
-      onUpdate(item.id, { internalComment: commentDraft })
-        .then(() => {
-          setCommentStatus("saved");
-        })
-        .catch(() => {
-          setCommentStatus("error");
-        });
-    }, 500);
-    return () => {
-      if (debounceRef.current) {
-        clearTimeout(debounceRef.current);
-      }
-    };
-  }, [commentDraft, item, onUpdate]);
-
   return (
     <div className="flex flex-col gap-4">
       <div className="rounded-xl bg-white/70 p-4 shadow-soft">
@@ -98,7 +113,7 @@ export default function PaidEditor({
         <input
           value={item.title}
           onChange={(event) => {
-            onUpdate(item.id, { title: event.target.value });
+            void safeUpdate({ title: event.target.value });
             setHasChanges(true);
           }}
           placeholder="Titulo de la pauta"
@@ -113,7 +128,7 @@ export default function PaidEditor({
             type="date"
             value={item.startDate}
             onChange={(event) => {
-              onUpdate(item.id, { startDate: event.target.value });
+              void safeUpdate({ startDate: event.target.value });
               setHasChanges(true);
             }}
             className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
@@ -125,7 +140,7 @@ export default function PaidEditor({
             type="date"
             value={item.endDate}
             onChange={(event) => {
-              onUpdate(item.id, { endDate: event.target.value });
+              void safeUpdate({ endDate: event.target.value });
               setHasChanges(true);
             }}
             className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
@@ -160,10 +175,10 @@ export default function PaidEditor({
             <p className="text-xs text-ink/50">Defini canales de pauta en Settings.</p>
           ) : (
             paidChannels.map((channel) => (
-              <label
-                key={channel}
-                className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${
-                  item.paidChannels.includes(channel)
+                <label
+                  key={channel}
+                  className={`flex items-center gap-2 rounded-full border px-3 py-1 text-xs ${
+                  selectedPaidChannels.includes(channel)
                     ? "border-ink bg-ink/10"
                     : "border-ink/10 bg-white"
                 }`}
@@ -171,7 +186,7 @@ export default function PaidEditor({
                 <input
                   type="checkbox"
                   className="accent-ink"
-                  checked={item.paidChannels.includes(channel)}
+                  checked={selectedPaidChannels.includes(channel)}
                   onChange={() => togglePaidChannel(channel)}
                 />
                 {channel}
@@ -186,7 +201,7 @@ export default function PaidEditor({
         <textarea
           value={item.paidContent}
           onChange={(event) => {
-            onUpdate(item.id, { paidContent: event.target.value });
+            void safeUpdate({ paidContent: event.target.value });
             setHasChanges(true);
           }}
           rows={4}
@@ -203,7 +218,7 @@ export default function PaidEditor({
               type="number"
               value={item.investmentAmount}
               onChange={(event) => {
-                onUpdate(item.id, { investmentAmount: Number(event.target.value) || 0 });
+                void safeUpdate({ investmentAmount: Number(event.target.value) || 0 });
                 setHasChanges(true);
               }}
               className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
@@ -211,7 +226,7 @@ export default function PaidEditor({
             <select
               value={item.investmentCurrency}
               onChange={(event) => {
-                onUpdate(item.id, {
+                void safeUpdate({
                   investmentCurrency: event.target.value as "ARS" | "USD"
                 });
                 setHasChanges(true);
@@ -228,7 +243,7 @@ export default function PaidEditor({
           <select
             value={item.axis ?? ""}
             onChange={(event) => {
-              onUpdate(item.id, { axis: event.target.value });
+              void safeUpdate({ axis: event.target.value });
               setHasChanges(true);
             }}
             className="mt-2 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
@@ -251,7 +266,7 @@ export default function PaidEditor({
               key={status.value}
               type="button"
               onClick={() => {
-                onUpdate(item.id, { status: status.value });
+                void safeUpdate({ status: status.value });
                 setHasChanges(true);
               }}
               className={`rounded-full px-4 py-1 text-xs font-semibold transition ${
@@ -276,7 +291,7 @@ export default function PaidEditor({
               : "bg-slate-300 text-slate-500 cursor-not-allowed"
           }`}
           onClick={() => {
-            onUpdate(item.id, { updatedAt: new Date().toISOString() });
+            void safeUpdate({ updatedAt: new Date().toISOString() });
             setHasChanges(false);
           }}
         >
@@ -284,14 +299,22 @@ export default function PaidEditor({
         </button>
         <button
           type="button"
-          onClick={() => onDuplicate(item.id)}
+          onClick={() => {
+            if (itemId) {
+              onDuplicate(itemId);
+            }
+          }}
           className="rounded-full border border-ink/20 bg-ink/10 px-4 py-2 text-xs font-semibold text-ink"
         >
           Duplicar pauta
         </button>
         <button
           type="button"
-          onClick={() => onDelete(item.id)}
+          onClick={() => {
+            if (itemId) {
+              onDelete(itemId);
+            }
+          }}
           className="rounded-full border border-danger/30 bg-danger/10 px-4 py-2 text-xs font-semibold text-danger"
         >
           Eliminar pauta
